@@ -9,8 +9,6 @@ F1TENTH gym 환경을 ROS2 시뮬레이션으로 변환하는 통신 브릿지�
 
 ## 설치
 
-### 의존성 설치
-
 **Python 패키지**
 ```bash
 pip3 install setuptools==59.6.0 \
@@ -58,6 +56,7 @@ rosdep install -i --from-path src --rosdistro foxy -y
 colcon build
 
 echo "source ~/sim_ws/install/local_setup.bash" >> ~/.bashrc
+echo "source ~/sim_ws/install/setup.bash" >> ~/.bashrc
 source ~/.bashrc
 ```
 
