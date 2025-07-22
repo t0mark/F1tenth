@@ -83,31 +83,49 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 
 구성을 변경한 후에는 변경사항이 반영되도록 워크스페이스에서 `colcon build`를 다시 실행하세요.
 
-# 시뮬레이션에서 발행하는 토픽
+# ROS2 토픽 구성
 
-**단일** 에이전트:
-`/scan`: ego 에이전트의 레이저 스캔
-`/ego_racecar/odom`: ego 에이전트의 오도메트리
-`/map`: 환경의 맵
-`tf` 트리도 유지됩니다.
+## 발행 토픽 (Published Topics)
 
-**두** 에이전트:
-단일 에이전트 시나리오에서 사용 가능한 토픽 외에도 다음 토픽들도 사용 가능합니다:
-`/opp_scan`: 상대 에이전트의 레이저 스캔
-`/ego_racecar/opp_odom`: ego 에이전트의 계획자를 위한 상대 에이전트의 오도메트리
-`/opp_racecar/odom`: 상대 에이전트의 오도메트리
-`/opp_racecar/opp_odom`: 상대 에이전트의 계획자를 위한 ego 에이전트의 오도메트리
+### 센서 데이터
+| 토픽명 | 메시지 타입 | 설명 |
+|--------|-------------|------|
+| `/scan` | `sensor_msgs/LaserScan` | Ego 에이전트의 라이다 스캔 데이터 |
+| `/ego_racecar/odom` | `nav_msgs/Odometry` | Ego 에이전트의 위치/속도 정보 |
+| `/opp_scan` | `sensor_msgs/LaserScan` | 상대 에이전트의 라이다 스캔 (2 에이전트 모드) |
+| `/opp_racecar/odom` | `nav_msgs/Odometry` | 상대 에이전트의 오도메트리 (2 에이전트 모드) |
 
-# 시뮬레이션에서 구독하는 토픽
+### 환경 정보  
+| 토픽명 | 메시지 타입 | 설명 |
+|--------|-------------|------|
+| `/map` | `nav_msgs/OccupancyGrid` | 트랙 맵 데이터 |
+| `/tf` | `tf2_msgs/TFMessage` | 좌표 변환 정보 |
+| `/tf_static` | `tf2_msgs/TFMessage` | 정적 좌표 변환 정보 |
+| `/joint_states` | `sensor_msgs/JointState` | 로봇 관절 상태 정보 |
 
-**단일** 에이전트:
-`/drive`: `AckermannDriveStamped` 메시지를 통한 ego 에이전트의 드라이브 명령
-`/initalpose`: RViz의 2D Pose Estimate 도구를 통한 ego 위치 재설정을 위한 토픽입니다. 무엇을 하는지 모르면 이 토픽에 직접 발행하지 **마세요**.
+### 기타
+| 토픽명 | 메시지 타입 | 설명 |
+|--------|-------------|------|
+| `/clock` | `rosgraph_msgs/Clock` | 시뮬레이션 시간 |
+| `/ego_robot_description` | `std_msgs/String` | Ego 로봇 URDF 설명 |
 
-**두** 에이전트:
-단일 에이전트 시나리오의 모든 토픽 외에도 다음 토픽들도 사용 가능합니다:
-`/opp_drive`: `AckermannDriveStamped` 메시지를 통한 상대 에이전트의 드라이브 명령. 2개의 에이전트를 사용할 때 차량이 움직이려면 ego의 드라이브 토픽과 상대방의 드라이브 토픽 **모두**에 발행해야 합니다.
-`/goal_pose`: RViz의 2D Goal Pose 도구를 통한 상대 에이전트 위치 재설정을 위한 토픽입니다. 무엇을 하는지 모르면 이 토픽에 직접 발행하지 **마세요**.
+## 구독 토픽 (Subscribed Topics)
+
+### 제어 명령
+| 토픽명 | 메시지 타입 | 설명 |
+|--------|-------------|------|
+| `/drive` | `ackermann_msgs/AckermannDriveStamped` | Ego 에이전트 조향/가속 명령 |
+| `/cmd_vel` | `geometry_msgs/Twist` | 키보드 텔레오프용 속도 명령 |
+| `/opp_drive` | `ackermann_msgs/AckermannDriveStamped` | 상대 에이전트 드라이브 명령 (2 에이전트 모드) |
+
+### RViz 인터랙션
+| 토픽명 | 메시지 타입 | 설명 |
+|--------|-------------|------|
+| `/initialpose` | `geometry_msgs/PoseWithCovarianceStamped` | Ego 에이전트 초기 위치 설정 (RViz 2D Pose Estimate) |
+| `/goal_pose` | `geometry_msgs/PoseStamped` | 상대 에이전트 목표 위치 설정 (RViz 2D Goal Pose) |
+| `/clicked_point` | `geometry_msgs/PointStamped` | RViz에서 클릭한 점 정보 |
+
+> ⚠️ **주의**: `/initialpose`와 `/goal_pose` 토픽은 RViz 도구와 함께 사용하도록 설계되었습니다. 직접 발행하지 마세요.
 
 # ROS 2에서 자체 에이전트 개발 및 생성
 
