@@ -1,83 +1,64 @@
-#!/usr/bin/env python3
-import os
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
-from launch_ros.substitutions import FindPackageShare
+from ament_index_python.packages import get_package_share_directory
+import os
 
 
 def generate_launch_description():
-    # Package directories
-    pkg_localization = FindPackageShare('localization')
-    
-    # Paths
-    amcl_config_path = PathJoinSubstitution([pkg_localization, 'config', 'amcl_config.yaml'])
-    
     # Launch configuration variables
     use_sim_time = LaunchConfiguration('use_sim_time')
-    autostart = LaunchConfiguration('autostart')
     
-    # Launch arguments
+    # Declare launch arguments
     declare_use_sim_time_cmd = DeclareLaunchArgument(
         'use_sim_time',
         default_value='true',
         description='Use simulation (Gazebo) clock if true'
     )
     
-    declare_autostart_cmd = DeclareLaunchArgument(
-        'autostart',
-        default_value='true',
-        description='Automatically startup the nav2 stack'
-    )
+    # Get the launch directory
+    pkg_dir = get_package_share_directory('localization')
     
-    # Transform remapping node
-    transform_remap_node = Node(
-        package='localization',
-        executable='transform_remap',
-        name='transform_remap',
-        parameters=[{
-            'use_sim_time': use_sim_time
-        }],
-        output='screen'
-    )
+    # Path to AMCL config file
+    amcl_config_file = os.path.join(pkg_dir, 'config', 'amcl_config.yaml')
     
-    # AMCL node
+    # AMCL node with topic remapping for F1TENTH
     amcl_node = Node(
         package='nav2_amcl',
         executable='amcl',
         name='amcl',
-        parameters=[amcl_config_path, {
-            'use_sim_time': use_sim_time
-        }],
+        output='screen',
+        parameters=[amcl_config_file, {'use_sim_time': use_sim_time}],
         remappings=[
+            ('odom', '/ego_racecar/odom'),
             ('/tf', 'tf'),
-            ('/tf_static', 'tf_static')
-        ],
-        output='screen'
+            ('/tf_static', 'tf_static'),
+        ]
     )
     
     # Lifecycle manager for AMCL
-    lifecycle_manager_node = Node(
+    lifecycle_manager_localization = Node(
         package='nav2_lifecycle_manager',
         executable='lifecycle_manager',
         name='lifecycle_manager_localization',
-        parameters=[{
-            'use_sim_time': use_sim_time,
-            'autostart': autostart,
-            'node_names': ['amcl']
-        }],
-        output='screen'
+        output='screen',
+        parameters=[
+            {'use_sim_time': use_sim_time},
+            {'autostart': True},
+            {'node_names': ['amcl']}
+        ]
     )
     
     # Create the launch description and populate
     ld = LaunchDescription()
     
-    # Add the commands to the launch description
+    # Add declarations
     ld.add_action(declare_use_sim_time_cmd)
-    ld.add_action(declare_autostart_cmd)
-    ld.add_action(transform_remap_node)
+    
+    # Add nodes
     ld.add_action(amcl_node)
-    ld.add_action(lifecycle_manager_node)
+    ld.add_action(lifecycle_manager_localization)
     
     return ld

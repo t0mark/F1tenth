@@ -4,14 +4,14 @@ amcl:
     robot_model_type: "nav2_amcl::DifferentialMotionModel"
     
     # Transform tolerance
-    transform_tolerance: 0.1
+    transform_tolerance: 0.5
     
     # Alpha parameters for motion model noise
-    alpha1: 0.2  # Rotational noise from rotation
-    alpha2: 0.2  # Rotational noise from translation
-    alpha3: 0.2  # Translational noise from translation  
-    alpha4: 0.2  # Translational noise from rotation
-    alpha5: 0.2  # Translation noise from translation (strafe)
+    alpha1: 0.2
+    alpha2: 0.2
+    alpha3: 0.2
+    alpha4: 0.2
+    alpha5: 0.2
     
     # Laser model parameters
     laser_model_type: "likelihood_field"
@@ -58,9 +58,9 @@ amcl:
     # Selective resampling
     selective_resampling: false
     
-    # Frame names
+    # Frame names (adjusted for F1TENTH with topic remapping)
     base_frame_id: "ego_racecar/base_link"
-    odom_frame_id: "odom"
+    odom_frame_id: "ego_racecar/odom"
     global_frame_id: "map"
     
     # Topic parameters
