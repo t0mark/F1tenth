@@ -2,25 +2,22 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>localization</name>
-  <version>0.0.0</version>
-  <description>F1TENTH AMCL localization package</description>
-  <maintainer email="iwagoho@gmail.com">tomark</maintainer>
+  <version>1.0.0</version>
+  <description>F1TENTH localization using standard nav2_amcl</description>
+  <maintainer email="your_email@example.com">Your Name</maintainer>
   <license>MIT</license>
 
-  <depend>rclpy</depend>
-  <depend>nav2_amcl</depend>
-  <depend>nav2_lifecycle_manager</depend>
-  <depend>geometry_msgs</depend>
-  <depend>nav_msgs</depend>
-  <depend>sensor_msgs</depend>
-  <depend>tf2_ros</depend>
+  <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <test_depend>ament_copyright</test_depend>
-  <test_depend>ament_flake8</test_depend>
-  <test_depend>ament_pep257</test_depend>
-  <test_depend>python3-pytest</test_depend>
+  <exec_depend>nav2_amcl</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>launch</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
 
   <export>
-    <build_type>ament_python</build_type>
+    <build_type>ament_cmake</build_type>
   </export>
 </package>
