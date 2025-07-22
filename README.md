@@ -127,6 +127,58 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 
 > ⚠️ **주의**: `/initialpose`와 `/goal_pose` 토픽은 RViz 도구와 함께 사용하도록 설계되었습니다. 직접 발행하지 마세요.
 
+# Localization 사용법
+
+이 프로젝트에는 F1TENTH 시뮬레이션 환경에서 차량 위치 추정을 위한 localization 패키지가 포함되어 있습니다.
+
+## Localization 실행
+
+시뮬레이션과 함께 localization을 실행하려면:
+
+```bash
+# 시뮬레이션 실행 (첫 번째 터미널)
+ros2 launch f1tenth_gym_ros gym_bridge_launch.py
+
+# Localization 실행 (두 번째 터미널) 
+ros2 launch localization localization.launch.py
+```
+
+## 주요 구성요소
+
+### AMCL (Adaptive Monte Carlo Localization)
+- **설정 파일**: `localization/config/amcl_config.yaml`
+- **기능**: 라이다 스캔 데이터와 맵을 이용한 확률적 위치 추정
+- **파라미터**: 파티클 필터, 모션 모델, 센서 모델 설정
+
+### Transform Remap 노드
+- **파일**: `localization/localization/transform_remap.py`
+- **기능**: F1TENTH 시뮬레이션과 Navigation2 간 좌표 변환 처리
+
+## 설정 파라미터
+
+주요 AMCL 파라미터 (`amcl_config.yaml`):
+- `max_particles`: 파티클 최대 개수 (기본값: 2000)
+- `min_particles`: 파티클 최소 개수 (기본값: 500)
+- `laser_max_range`: 라이다 최대 범위 (기본값: 100.0m)
+- `base_frame_id`: 로봇 기준 좌표계 (`ego_racecar/base_link`)
+
+## RViz에서 초기 위치 설정
+
+1. RViz에서 "2D Pose Estimate" 도구 선택
+2. 맵상에서 차량의 실제 위치를 클릭하고 드래그하여 방향 설정
+3. AMCL이 해당 위치 주변에서 파티클을 초기화
+
+## 관련 토픽
+
+### 입력 토픽
+- `/scan`: 라이다 스캔 데이터
+- `/map`: 맵 데이터
+- `/initialpose`: RViz에서 설정한 초기 위치
+
+### 출력 토픽
+- `/amcl_pose`: AMCL에서 추정한 위치
+- `/particle_cloud`: 파티클 구름 시각화
+
 # ROS 2에서 자체 에이전트 개발 및 생성
 
 차량을 제어하는 자체 에이전트를 시작하는 여러 가지 방법이 있습니다.
