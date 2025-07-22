@@ -83,7 +83,7 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 
 구성을 변경한 후에는 변경사항이 반영되도록 워크스페이스에서 `colcon build`를 다시 실행하세요.
 
-# ROS2 토픽 구성
+# 토픽 구성
 
 ## 발행 토픽 (Published Topics)
 
