@@ -68,12 +68,6 @@ source ~/.bashrc
 ros2 launch f1tenth_gym_ros gym_bridge_launch.py
 ```
 
-### Localization
-
-```bash
-ros2 launch localization localization.launch.py
-```
-
 ### 키보드 텔레오프
 
 - 키보드 텔레오프 활성화: `config/sim.yaml`에서 `kb_teleop: True` 설정
