@@ -48,7 +48,7 @@
     </visual>
   </link>
 
-  <joint name="$base_to_back_left_wheel" type="fixed">
+  <joint name="base_to_back_left_wheel" type="fixed">
     <parent link="${car_name}/base_link"/>
     <child link="${car_name}/back_left_wheel"/>
     <origin xyz="0 ${(wheel_length+width)/2} ${wheel_radius}"/>
