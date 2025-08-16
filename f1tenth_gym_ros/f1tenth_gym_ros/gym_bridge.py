@@ -1,25 +1,3 @@
-# MIT License
-
-# Copyright (c) 2020 Hongrui Zheng
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-
 import rclpy
 from rclpy.node import Node
 
@@ -30,7 +8,6 @@ from geometry_msgs.msg import PoseWithCovarianceStamped
 from geometry_msgs.msg import Twist
 from geometry_msgs.msg import TransformStamped
 from geometry_msgs.msg import Transform
-from geometry_msgs.msg import Quaternion
 from ackermann_msgs.msg import AckermannDriveStamped
 from tf2_ros import TransformBroadcaster
 
@@ -39,9 +16,17 @@ import numpy as np
 from transforms3d import euler
 
 class GymBridge(Node):
+    """
+    F1TENTH Gym 시뮬레이터와 ROS2를 연결하는 브리지 노드
+    - 시뮬레이터에서 센서 데이터를 받아 ROS 토픽으로 퍼블리시
+    - ROS 토픽에서 제어 명령을 받아 시뮬레이터에 전달
+    - 단일 또는 다중 에이전트 시뮬레이션 지원
+    """
+    
     def __init__(self):
         super().__init__('gym_bridge')
-
+        
+        # 파라미터 선언
         self.declare_parameter('ego_namespace')
         self.declare_parameter('ego_odom_topic')
         self.declare_parameter('ego_opp_odom_topic')
@@ -65,150 +50,135 @@ class GymBridge(Node):
         self.declare_parameter('sy1')
         self.declare_parameter('stheta1')
         self.declare_parameter('kb_teleop')
+        self.num_agents = self.get_parameter('num_agent').value
 
-        # check num_agents
-        num_agents = self.get_parameter('num_agent').value
-        if num_agents < 1 or num_agents > 2:
+        # 유효성 검사
+        if self.num_agents < 1 or self.num_agents > 2:
             raise ValueError('num_agents should be either 1 or 2.')
-        elif type(num_agents) != int:
+        elif type(self.num_agents) != int:
             raise ValueError('num_agents should be an int.')
 
-        # env backend
-        self.env = gym.make('f110_gym:f110-v0',
-                            map=self.get_parameter('map_path').value,
-                            map_ext=self.get_parameter('map_img_ext').value,
-                            num_agents=num_agents)
-
-        sx = self.get_parameter('sx').value
-        sy = self.get_parameter('sy').value
-        stheta = self.get_parameter('stheta').value
-        self.ego_pose = [sx, sy, stheta]
-        self.ego_speed = [0.0, 0.0, 0.0]
-        self.ego_requested_speed = 0.0
-        self.ego_steer = 0.0
-        self.ego_collision = False
-        ego_scan_topic = self.get_parameter('ego_scan_topic').value
-        ego_drive_topic = self.get_parameter('ego_drive_topic').value
+        # 라이다 센서 설정
         scan_fov = self.get_parameter('scan_fov').value
         scan_beams = self.get_parameter('scan_beams').value
         self.angle_min = -scan_fov / 2.
         self.angle_max = scan_fov / 2.
         self.angle_inc = scan_fov / scan_beams
-        self.ego_namespace = self.get_parameter('ego_namespace').value
-        ego_odom_topic = self.ego_namespace + '/' + self.get_parameter('ego_odom_topic').value
         self.scan_distance_to_base_link = self.get_parameter('scan_distance_to_base_link').value
         
-        if num_agents == 2:
+        # 메인 차량(ego) 설정
+        sx = self.get_parameter('sx').value
+        sy = self.get_parameter('sy').value
+        stheta = self.get_parameter('stheta').value
+        self.ego_namespace = self.get_parameter('ego_namespace').value
+        self.ego_pose = [sx, sy, stheta]
+        self.ego_speed = [0.0, 0.0, 0.0]
+        self.ego_requested_speed = 0.0
+        self.ego_steer = 0.0
+        self.ego_collision = False
+        self.ego_drive_published = False
+        
+        # 상대방 차량(opponent) 설정
+        if self.num_agents == 2:
             self.has_opp = True
-            self.opp_namespace = self.get_parameter('opp_namespace').value
             sx1 = self.get_parameter('sx1').value
             sy1 = self.get_parameter('sy1').value
             stheta1 = self.get_parameter('stheta1').value
+            self.opp_namespace = self.get_parameter('opp_namespace').value
             self.opp_pose = [sx1, sy1, stheta1]
             self.opp_speed = [0.0, 0.0, 0.0]
             self.opp_requested_speed = 0.0
             self.opp_steer = 0.0
             self.opp_collision = False
-            self.obs, _ , self.done, _ = self.env.reset(np.array([[sx, sy, stheta], [sx1, sy1, stheta1]]))
-            self.ego_scan = list(self.obs['scans'][0])
-            self.opp_scan = list(self.obs['scans'][1])
-
-            opp_scan_topic = self.get_parameter('opp_scan_topic').value
-            opp_odom_topic = self.opp_namespace + '/' + self.get_parameter('opp_odom_topic').value
-            opp_drive_topic = self.get_parameter('opp_drive_topic').value
-
-            ego_opp_odom_topic = self.ego_namespace + '/' + self.get_parameter('ego_opp_odom_topic').value
-            opp_ego_odom_topic = self.opp_namespace + '/' + self.get_parameter('opp_ego_odom_topic').value
+            self.opp_drive_published = False
         else:
             self.has_opp = False
-            self.obs, _ , self.done, _ = self.env.reset(np.array([[sx, sy, stheta]]))
+        
+        # TF 브로드캐스터 초기화 및 타이머 설정
+        self.env = gym.make('f110_gym:f110-v0',
+                            map=self.get_parameter('map_path').value,
+                            map_ext=self.get_parameter('map_img_ext').value,
+                            num_agents=self.num_agents)
+
+        if self.num_agents == 2:
+            self.obs, _, self.done, _ = self.env.reset(np.array([[sx, sy, stheta], [sx1, sy1, stheta1]]))
+            self.ego_scan = list(self.obs['scans'][0])
+            self.opp_scan = list(self.obs['scans'][1])
+        else:
+            self.obs, _, self.done, _ = self.env.reset(np.array([[sx, sy, stheta]]))
             self.ego_scan = list(self.obs['scans'][0])
 
-        # sim physical step timer
-        self.drive_timer = self.create_timer(0.01, self.drive_timer_callback)
-        # topic publishing timer
-        self.timer = self.create_timer(0.004, self.timer_callback)
-
-        # transform broadcaster
+        # TF 브로드캐스터
         self.br = TransformBroadcaster(self)
+        # 타이머: 시뮬레이션 스텝(100Hz) / 퍼블리시 루프(250Hz)
+        self.drive_timer = self.create_timer(0.01, self.drive_timer_callback)
+        self.timer = self.create_timer(0.004, self.timer_callback)
+        
+        # 토픽 이름 설정
+        ego_scan_topic = self.get_parameter('ego_scan_topic').value
+        ego_drive_topic = self.get_parameter('ego_drive_topic').value
+        ego_odom_topic = self.ego_namespace + '/' + self.get_parameter('ego_odom_topic').value
 
-        # publishers
+        if self.has_opp:
+            opp_scan_topic = self.get_parameter('opp_scan_topic').value
+            opp_odom_topic = self.opp_namespace + '/' + self.get_parameter('opp_odom_topic').value
+            ego_opp_odom_topic = self.ego_namespace + '/' + self.get_parameter('ego_opp_odom_topic').value
+            opp_ego_odom_topic = self.opp_namespace + '/' + self.get_parameter('opp_ego_odom_topic').value
+
+        # 퍼블리셔
         self.ego_scan_pub = self.create_publisher(LaserScan, ego_scan_topic, 10)
         self.ego_odom_pub = self.create_publisher(Odometry, ego_odom_topic, 10)
-        self.ego_drive_published = False
-        if num_agents == 2:
+        
+        if self.has_opp:
             self.opp_scan_pub = self.create_publisher(LaserScan, opp_scan_topic, 10)
-            self.ego_opp_odom_pub = self.create_publisher(Odometry, ego_opp_odom_topic, 10)
             self.opp_odom_pub = self.create_publisher(Odometry, opp_odom_topic, 10)
+            self.ego_opp_odom_pub = self.create_publisher(Odometry, ego_opp_odom_topic, 10)
             self.opp_ego_odom_pub = self.create_publisher(Odometry, opp_ego_odom_topic, 10)
-            self.opp_drive_published = False
 
-        # subscribers
+        # 서브스크라이버
         self.ego_drive_sub = self.create_subscription(
-            AckermannDriveStamped,
-            ego_drive_topic,
-            self.drive_callback,
-            10)
+            AckermannDriveStamped, ego_drive_topic, self.drive_callback, 10)
         self.ego_reset_sub = self.create_subscription(
-            PoseWithCovarianceStamped,
-            '/initialpose',
-            self.ego_reset_callback,
-            10)
-        if num_agents == 2:
+            PoseWithCovarianceStamped, '/initialpose', self.ego_reset_callback, 10)
+        
+        if self.has_opp:
+            opp_drive_topic = self.get_parameter('opp_drive_topic').value
             self.opp_drive_sub = self.create_subscription(
-                AckermannDriveStamped,
-                opp_drive_topic,
-                self.opp_drive_callback,
-                10)
+                AckermannDriveStamped, opp_drive_topic, self.opp_drive_callback, 10)
             self.opp_reset_sub = self.create_subscription(
-                PoseStamped,
-                '/goal_pose',
-                self.opp_reset_callback,
-                10)
-
+                PoseStamped, '/goal_pose', self.opp_reset_callback, 10)
+        
         if self.get_parameter('kb_teleop').value:
             self.teleop_sub = self.create_subscription(
-                Twist,
-                '/cmd_vel',
-                self.teleop_callback,
-                10)
-
-
+                Twist, '/cmd_vel', self.teleop_callback, 10)
+    
     def drive_callback(self, drive_msg):
+        """
+        ego 차량 제어 명령 콜백
+        - 목적: ego 차량의 목표 속도/조향각을 갱신
+        - 입력: AckermannDriveStamped (speed [m/s], steering_angle [rad])
+        """
         self.ego_requested_speed = drive_msg.drive.speed
         self.ego_steer = drive_msg.drive.steering_angle
         self.ego_drive_published = True
 
     def opp_drive_callback(self, drive_msg):
+        """
+        opp 차량 제어 명령 콜백 (다중 에이전트일 때만)
+        - 목적: opp 차량의 목표 속도/조향각을 갱신
+        - 입력: AckermannDriveStamped (speed [m/s], steering_angle [rad])
+        """
         self.opp_requested_speed = drive_msg.drive.speed
         self.opp_steer = drive_msg.drive.steering_angle
         self.opp_drive_published = True
 
-    def ego_reset_callback(self, pose_msg):
-        rx = pose_msg.pose.pose.position.x
-        ry = pose_msg.pose.pose.position.y
-        rqx = pose_msg.pose.pose.orientation.x
-        rqy = pose_msg.pose.pose.orientation.y
-        rqz = pose_msg.pose.pose.orientation.z
-        rqw = pose_msg.pose.pose.orientation.w
-        _, _, rtheta = euler.quat2euler([rqw, rqx, rqy, rqz], axes='sxyz')
-        if self.has_opp:
-            opp_pose = [self.obs['poses_x'][1], self.obs['poses_y'][1], self.obs['poses_theta'][1]]
-            self.obs, _ , self.done, _ = self.env.reset(np.array([[rx, ry, rtheta], opp_pose]))
-        else:
-            self.obs, _ , self.done, _ = self.env.reset(np.array([[rx, ry, rtheta]]))
-
-    def opp_reset_callback(self, pose_msg):
-        if self.has_opp:
-            rx = pose_msg.pose.position.x
-            ry = pose_msg.pose.position.y
-            rqx = pose_msg.pose.orientation.x
-            rqy = pose_msg.pose.orientation.y
-            rqz = pose_msg.pose.orientation.z
-            rqw = pose_msg.pose.orientation.w
-            _, _, rtheta = euler.quat2euler([rqw, rqx, rqy, rqz], axes='sxyz')
-            self.obs, _ , self.done, _ = self.env.reset(np.array([list(self.ego_pose), [rx, ry, rtheta]]))
     def teleop_callback(self, twist_msg):
+        """
+        키보드 텔레오퍼레이션 콜백 (옵션)
+        - 목적: /cmd_vel을 통해 간단한 전/후진 및 좌/우 조향을 ego에 반영
+        - 입력: geometry_msgs/Twist (linear.x [m/s], angular.z [rad])
+        - 텔레오프 사용 시에도 정식 Ackermann 명령(조향 모델 제어)과 동일하게 drive_timer에서 스텝이 진행됨
+        """
         if not self.ego_drive_published:
             self.ego_drive_published = True
 
@@ -221,17 +191,109 @@ class GymBridge(Node):
         else:
             self.ego_steer = 0.0
 
+    def ego_reset_callback(self, pose_msg):
+        """
+        ego 차량 위치 리셋 콜백
+        - 목적: RViz 등의 /initialpose 입력을 받아 ego(및 필요 시 opp)의 초기 포즈로 시뮬레이터 리셋
+        - 입력: geometry_msgs/PoseWithCovarianceStamped (x, y, quaternion)
+        - Rviz에서 초기 Pose 설정 시, ego 차량을 이동
+        - 좌표/프레임: 맵 좌표계(map) 기준 포즈로 가정
+        """
+        rx = pose_msg.pose.pose.position.x
+        ry = pose_msg.pose.pose.position.y
+        rqx = pose_msg.pose.pose.orientation.x
+        rqy = pose_msg.pose.pose.orientation.y
+        rqz = pose_msg.pose.pose.orientation.z
+        rqw = pose_msg.pose.pose.orientation.w
+        _, _, rtheta = euler.quat2euler([rqw, rqx, rqy, rqz], axes='sxyz')
+        
+        if self.has_opp:
+            opp_pose = [self.obs['poses_x'][1], self.obs['poses_y'][1], self.obs['poses_theta'][1]]
+            self.obs, _, self.done, _ = self.env.reset(np.array([[rx, ry, rtheta], opp_pose]))
+        else:
+            self.obs, _, self.done, _ = self.env.reset(np.array([[rx, ry, rtheta]]))
+
+    def opp_reset_callback(self, pose_msg):
+        """
+        opp 차량 위치 리셋 콜백 (다중 에이전트일 때만)
+        - 목적: /goal_pose 입력을 받아 opp 포즈만 갱신하여 env.reset 수행
+        - 입력: geometry_msgs/PoseStamped
+        - Rivz에서 Goal 설정 시, opp 차량을 이동
+        """
+        if self.has_opp:
+            rx = pose_msg.pose.position.x
+            ry = pose_msg.pose.position.y
+            rqx = pose_msg.pose.orientation.x
+            rqy = pose_msg.pose.orientation.y
+            rqz = pose_msg.pose.orientation.z
+            rqw = pose_msg.pose.orientation.w
+            _, _, rtheta = euler.quat2euler([rqw, rqx, rqy, rqz], axes='sxyz')
+            self.obs, _, self.done, _ = self.env.reset(np.array([list(self.ego_pose), [rx, ry, rtheta]]))
+
+    
     def drive_timer_callback(self):
+        """
+        물리 시뮬레이션 스텝 실행 (주기 타이머)
+        - 목적: 현재 명령(ego/opp)을 바탕으로 env.step을 1스텝 진행
+        - 주기: 0.01s (100 Hz)
+        - (ego_drive_published 플래그) 최초 명령 수신 전에는 스텝을 진행 X
+        """
         if self.ego_drive_published and not self.has_opp:
             self.obs, _, self.done, _ = self.env.step(np.array([[self.ego_steer, self.ego_requested_speed]]))
         elif self.ego_drive_published and self.has_opp and self.opp_drive_published:
-            self.obs, _, self.done, _ = self.env.step(np.array([[self.ego_steer, self.ego_requested_speed], [self.opp_steer, self.opp_requested_speed]]))
+            self.obs, _, self.done, _ = self.env.step(np.array([[self.ego_steer, self.ego_requested_speed], 
+                                                                [self.opp_steer, self.opp_requested_speed]]))
         self._update_sim_state()
 
     def timer_callback(self):
+        """
+        LiDAR/Odom/TF 퍼블리싱 루프 (주기 타이머)
+        - 목적: 현재 시뮬레이션 상태를 ROS 토픽/TF로 퍼블리시합니다.
+        - 주기: 0.004s (≈250 Hz)
+        - 퍼블리시:
+          * LaserScan: ego(+opp)
+          * Odometry: ego(+opp), 상호 추정 odom(ego_opp/opp_ego)
+          * TF: map→base_link, base_link→laser, 휠 힌지→휠(조향각)
+        - 타임스탬프: 노드 clock 기준 now()
+        """
         ts = self.get_clock().now().to_msg()
 
-        # pub scans
+        self._publish_laser_scan(ts)
+        self._publish_odom(ts)
+        self._publish_transforms(ts)
+        self._publish_laser_transforms(ts)
+        self._publish_wheel_transforms(ts)
+
+    
+    def _update_sim_state(self):
+        """
+        시뮬레이터 관측값을 내부 상태로 반영
+        - 목적: env.step/reset 결과 -> self.obs (gym 관측 dict) -> 포즈/속도/스캔 버퍼
+        - 이 함수는 순수 상태 동기화만 수행
+        """
+        self.ego_scan = list(self.obs['scans'][0])
+        self.ego_pose[0] = self.obs['poses_x'][0]
+        self.ego_pose[1] = self.obs['poses_y'][0]
+        self.ego_pose[2] = self.obs['poses_theta'][0]
+        self.ego_speed[0] = self.obs['linear_vels_x'][0]
+        self.ego_speed[1] = self.obs['linear_vels_y'][0]
+        self.ego_speed[2] = self.obs['ang_vels_z'][0]
+        
+        if self.has_opp:
+            self.opp_scan = list(self.obs['scans'][1])
+            self.opp_pose[0] = self.obs['poses_x'][1]
+            self.opp_pose[1] = self.obs['poses_y'][1]
+            self.opp_pose[2] = self.obs['poses_theta'][1]
+            self.opp_speed[0] = self.obs['linear_vels_x'][1]
+            self.opp_speed[1] = self.obs['linear_vels_y'][1]
+            self.opp_speed[2] = self.obs['ang_vels_z'][1]
+    
+    def _publish_laser_scan(self, ts):
+        """
+        라이다 스캔 데이터 퍼블리시
+        - 목적: 최신 스캔 버퍼를 LaserScan 메시지로 송신
+        - 프레임: {namespace}/laser
+        """
         scan = LaserScan()
         scan.header.stamp = ts
         scan.header.frame_id = self.ego_namespace + '/laser'
@@ -255,33 +317,13 @@ class GymBridge(Node):
             opp_scan.ranges = self.opp_scan
             self.opp_scan_pub.publish(opp_scan)
 
-        # pub tf
-        self._publish_odom(ts)
-        self._publish_transforms(ts)
-        self._publish_laser_transforms(ts)
-        self._publish_wheel_transforms(ts)
-
-    def _update_sim_state(self):
-        self.ego_scan = list(self.obs['scans'][0])
-        if self.has_opp:
-            self.opp_scan = list(self.obs['scans'][1])
-            self.opp_pose[0] = self.obs['poses_x'][1]
-            self.opp_pose[1] = self.obs['poses_y'][1]
-            self.opp_pose[2] = self.obs['poses_theta'][1]
-            self.opp_speed[0] = self.obs['linear_vels_x'][1]
-            self.opp_speed[1] = self.obs['linear_vels_y'][1]
-            self.opp_speed[2] = self.obs['ang_vels_z'][1]
-
-        self.ego_pose[0] = self.obs['poses_x'][0]
-        self.ego_pose[1] = self.obs['poses_y'][0]
-        self.ego_pose[2] = self.obs['poses_theta'][0]
-        self.ego_speed[0] = self.obs['linear_vels_x'][0]
-        self.ego_speed[1] = self.obs['linear_vels_y'][0]
-        self.ego_speed[2] = self.obs['ang_vels_z'][0]
-
-        
-
     def _publish_odom(self, ts):
+        """
+        오도메트리 데이터 퍼블리시
+        - 목적: 현재 포즈/속도를 nav_msgs/Odometry로 송신
+        - 교차 퍼블리시: ego_opp_odom_pub / opp_ego_odom_pub (상대 차량에 대한 odom 제공)
+        - covariance는 설정하지 않으므로 다운스트림에서 필요 시 주의 요망
+        """
         ego_odom = Odometry()
         ego_odom.header.stamp = ts
         ego_odom.header.frame_id = 'map'
@@ -318,6 +360,11 @@ class GymBridge(Node):
             self.ego_opp_odom_pub.publish(opp_odom)
 
     def _publish_transforms(self, ts):
+        """
+        차량 베이스 링크 TF 퍼블리시
+        - 목적: map → {namespace}/base_link 변환을 TF로 브로드캐스트
+        - 레이저/휠 등 하위 링크는 별도 함수에서 송신
+        """
         ego_t = Transform()
         ego_t.translation.x = self.ego_pose[0]
         ego_t.translation.y = self.ego_pose[1]
@@ -354,6 +401,11 @@ class GymBridge(Node):
             self.br.sendTransform(opp_ts)
 
     def _publish_wheel_transforms(self, ts):
+        """
+        바퀴 조향각 TF 퍼블리시
+        - 목적: 조향각을 반영하여 힌지→휠 링크 회전 TF를 브로드캐스트
+        - 순수 회전만 갱신(translation 없음)
+        """
         ego_wheel_ts = TransformStamped()
         ego_wheel_quat = euler.euler2quat(0., 0., self.ego_steer, axes='sxyz')
         ego_wheel_ts.transform.rotation.x = ego_wheel_quat[1]
@@ -384,9 +436,12 @@ class GymBridge(Node):
             self.br.sendTransform(opp_wheel_ts)
 
     def _publish_laser_transforms(self, ts):
+        """
+        라이다 센서 TF 퍼블리시
+        - 목적: base_link → laser 고정 변환을 송신
+        """
         ego_scan_ts = TransformStamped()
         ego_scan_ts.transform.translation.x = self.scan_distance_to_base_link
-        # ego_scan_ts.transform.translation.z = 0.04+0.1+0.025
         ego_scan_ts.transform.rotation.w = 1.
         ego_scan_ts.header.stamp = ts
         ego_scan_ts.header.frame_id = self.ego_namespace + '/base_link'
@@ -402,7 +457,14 @@ class GymBridge(Node):
             opp_scan_ts.child_frame_id = self.opp_namespace + '/laser'
             self.br.sendTransform(opp_scan_ts)
 
+
 def main(args=None):
+    """
+    메인 함수 - 노드 초기화 및 실행
+    - 목적: rclpy 초기화, GymBridge 노드 생성, 스핀 진입
+    - 종료: Ctrl+C 등으로 스핀 종료 시 rclpy.shutdown()은 런타임이 정리
+    - 외부에서 launch 파일로 여러 노드를 구동할 경우, 파라미터를 launch에서 전달
+    """
     rclpy.init(args=args)
     gym_bridge = GymBridge()
     rclpy.spin(gym_bridge)
