@@ -109,12 +109,12 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 | `/opp_racecar/ego_odom` | `nav_msgs/Odometry` | 250Hz | 상대방 네임스페이스의 주 차량 정보 |
 
 **환경 정보**
-| 토픽명 | 메시지 타입 | 설명 |
-|--------|-------------|------|
-| `/map` | `nav_msgs/OccupancyGrid` | 트랙 맵 |
-| `/tf` | `tf2_msgs/TFMessage` | 좌표 변환 |
-| `/tf_static` | `tf2_msgs/TFMessage` | 정적 좌표 변환 |
-| `/joint_states` | `sensor_msgs/JointState` | 관절 상태 |
+| 토픽명 | 메시지 타입 | 주파수 | 설명 |
+|--------|-------------|---------|------|
+| `/map` | `nav_msgs/OccupancyGrid` | 정적 | 트랙 맵 |
+| `/tf` | `tf2_msgs/TFMessage` | 250Hz | 동적 좌표 변환 |
+| `/tf_static` | `tf2_msgs/TFMessage` | 정적 | 정적 좌표 변환 |
+| `/joint_states` | `sensor_msgs/JointState` | 250Hz | 관절 상태 |
 
 
 ### 구독 토픽 (Subscribed)
@@ -147,3 +147,40 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 - **센서 데이터 발행**: 250Hz (0.004초 간격)
 - **Ackermann 드라이브**: speed (m/s), steering_angle (rad)
 - **키보드 텔레오프**: linear.x (전진/후진), angular.z (좌/우 조향 ±0.3rad)
+
+### TF (좌표 변환) 구조
+시뮬레이션에서 발행하는 TF 트리는 다음과 같습니다:
+
+#### 단일 에이전트 (num_agent: 1)
+```
+map
+└── ego_racecar/base_link
+    ├── ego_racecar/laser
+    ├── ego_racecar/front_left_hinge
+    │   └── ego_racecar/front_left_wheel
+    └── ego_racecar/front_right_hinge
+        └── ego_racecar/front_right_wheel
+```
+
+#### 다중 에이전트 (num_agent: 2)
+```
+map
+├── ego_racecar/base_link
+│   ├── ego_racecar/laser
+│   ├── ego_racecar/front_left_hinge
+│   │   └── ego_racecar/front_left_wheel
+│   └── ego_racecar/front_right_hinge
+│       └── ego_racecar/front_right_wheel
+└── opp_racecar/base_link
+    ├── opp_racecar/laser
+    ├── opp_racecar/front_left_hinge
+    │   └── opp_racecar/front_left_wheel
+    └── opp_racecar/front_right_hinge
+        └── opp_racecar/front_right_wheel
+```
+
+**TF 변환 세부사항:**
+- **map → base_link**: 차량의 전역 위치 (x, y, yaw)
+- **base_link → laser**: 라이다 센서 위치 (scan_distance_to_base_link 파라미터)
+- **base_link → front_*_hinge**: 바퀴 힌지 고정 위치 (정적)
+- **front_*_hinge → front_*_wheel**: 조향각 반영 (동적, steering_angle)
