@@ -99,12 +99,14 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ### 발행 토픽 (Published)
 
 **센서 데이터**
-| 토픽명 | 메시지 타입 | 설명 |
-|--------|-------------|------|
-| `/scan` | `sensor_msgs/LaserScan` | 라이다 스캔 데이터 |
-| `/ego_racecar/odom` | `nav_msgs/Odometry` | 오도메트리 정보 |
-| `/opp_scan` | `sensor_msgs/LaserScan` | 상대방 라이다 (2 에이전트) |
-| `/opp_racecar/odom` | `nav_msgs/Odometry` | 상대방 오도메트리 (2 에이전트) |
+| 토픽명 | 메시지 타입 | 주파수 | 설명 |
+|--------|-------------|---------|------|
+| `/scan` | `sensor_msgs/LaserScan` | 250Hz | 주 차량 라이다 스캔 데이터 |
+| `/ego_racecar/odom` | `nav_msgs/Odometry` | 250Hz | 주 차량 오도메트리 정보 |
+| `/opp_scan` | `sensor_msgs/LaserScan` | 250Hz | 상대방 라이다 (2 에이전트) |
+| `/opp_racecar/odom` | `nav_msgs/Odometry` | 250Hz | 상대방 오도메트리 (2 에이전트) |
+| `/ego_racecar/opp_odom` | `nav_msgs/Odometry` | 250Hz | 주 차량 네임스페이스의 상대방 정보 |
+| `/opp_racecar/ego_odom` | `nav_msgs/Odometry` | 250Hz | 상대방 네임스페이스의 주 차량 정보 |
 
 **환경 정보**
 | 토픽명 | 메시지 타입 | 설명 |
@@ -123,19 +125,33 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ### 구독 토픽 (Subscribed)
 
 **제어 명령**
-| 토픽명 | 메시지 타입 | 설명 |
-|--------|-------------|------|
-| `/drive` | `ackermann_msgs/AckermannDriveStamped` | 조향/가속 명령 |
-| `/cmd_vel` | `geometry_msgs/Twist` | 속도 명령 |
-| `/opp_drive` | `ackermann_msgs/AckermannDriveStamped` | 상대방 드라이브 (2 에이전트) |
+| 토픽명 | 메시지 타입 | 처리 주파수 | 설명 |
+|--------|-------------|-------------|------|
+| `/drive` | `ackermann_msgs/AckermannDriveStamped` | 100Hz | 주 차량 조향/가속 명령 |
+| `/cmd_vel` | `geometry_msgs/Twist` | 실시간 | 키보드 텔레오프 속도 명령 (kb_teleop 활성화 시) |
+| `/opp_drive` | `ackermann_msgs/AckermannDriveStamped` | 100Hz | 상대방 드라이브 명령 (2 에이전트) |
 
 **RViz 상호작용**
-| 토픽명 | 메시지 타입 | 설명 |
-|--------|-------------|------|
-| `/initialpose` | `geometry_msgs/PoseWithCovarianceStamped` | 초기 위치 설정 |
-| `/goal_pose` | `geometry_msgs/PoseStamped` | 목표 위치 설정 |
+| 토픽명 | 메시지 타입 | 기능 | 설명 |
+|--------|-------------|------|------|
+| `/initialpose` | `geometry_msgs/PoseWithCovarianceStamped` | ego 리셋 | 주 차량 위치 초기화 (RViz "2D Pose Estimate") |
+| `/goal_pose` | `geometry_msgs/PoseStamped` | opp 리셋 | 상대방 차량 위치 설정 (RViz "2D Nav Goal") |
 
-> ⚠️ **주의**: RViz 도구용 토픽은 직접 발행하지 마세요.
+> ⚠️ **주의**: RViz 도구용 토픽은 직접 발행하지 마세요. RViz GUI 도구를 사용하세요.
+
+## 토픽 세부 정보
+
+### 라이다 스캔 (`sensor_msgs/LaserScan`)
+- **각도 범위**: FOV 파라미터에 따라 설정 (기본값 확인 필요)
+- **빔 개수**: scan_beams 파라미터에 따라 설정
+- **최대 거리**: laser_max_range (기본 100.0m)
+- **base_link로부터 거리**: scan_distance_to_base_link 파라미터
+
+### 제어 명령 처리
+- **시뮬레이션 스텝**: 100Hz (0.01초 간격)
+- **센서 데이터 발행**: 250Hz (0.004초 간격)
+- **Ackermann 드라이브**: speed (m/s), steering_angle (rad)
+- **키보드 텔레오프**: linear.x (전진/후진), angular.z (좌/우 조향 ±0.3rad)
 
 ## 에이전트 개발
 
