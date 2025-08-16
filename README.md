@@ -116,11 +116,6 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 | `/tf_static` | `tf2_msgs/TFMessage` | 정적 좌표 변환 |
 | `/joint_states` | `sensor_msgs/JointState` | 관절 상태 |
 
-**Localization**
-| 토픽명 | 메시지 타입 | 설명 |
-|--------|-------------|------|
-| `/amcl_pose` | `geometry_msgs/PoseWithCovarianceStamped` | 추정 위치 |
-| `/particle_cloud` | `geometry_msgs/PoseArray` | 파티클 구름 |
 
 ### 구독 토픽 (Subscribed)
 
@@ -160,10 +155,3 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 1. **워크스페이스 내 패키지**: `~/sim_ws`에서 새 패키지 생성 후 별도 터미널에서 실행
 2. **Docker 컨테이너**: 에이전트용 별도 컨테이너 생성하여 통신
 
-## Localization 설정
-
-**주요 AMCL 파라미터** (`localization/config/amcl_config.yaml`):
-- `max_particles`: 2000 (파티클 최대 개수)
-- `min_particles`: 500 (파티클 최소 개수) 
-- `laser_max_range`: 100.0 (라이다 최대 범위)
-- `base_frame_id`: "ego_racecar/base_link"
