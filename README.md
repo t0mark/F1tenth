@@ -1,203 +1,102 @@
-# F1TENTH Gym ROS2 Simulation Bridge
+# F1TENTH ROS2 Simulation Workspace
 
-F1TENTH gym 환경을 ROS2 시뮬레이션으로 변환하는 통신 브릿지입니다.
+<div align="center">
+  <img src="https://f1tenth.org/assets/img/f1tenth_logo_wt.png" alt="F1TENTH Logo" width="400">
+</div>
 
-## 요구 사항
+F1TENTH 자율주행 레이싱을 위한 ROS2 시뮬레이션 환경입니다.
 
-- Ubuntu 20.04 LTS
-- ROS 2 Foxy
+## 📋 시스템 요구사항
 
-## 설치
+- **OS**: Ubuntu 20.04 LTS
+- **ROS**: ROS2 Foxy
+- **Python**: 3.8+
 
-**Python 패키지**
+## 🔧 의존성 설치
+
+### Python 패키지
 ```bash
-pip3 install setuptools==59.6.0 \
-  testresources wheel numpy matplotlib pyyaml \
+pip3 install setuptools==59.6.0 testresources wheel numpy matplotlib pyyaml \
   gymnasium pybullet-utils transforms3d
 ```
 
-**시스템 패키지**
+### 시스템 패키지
 ```bash
-sudo apt-get update
-sudo apt-get install python3-dev build-essential
+sudo apt-get update && sudo apt-get install python3-dev build-essential
 ```
 
-**ROS 2 패키지**
+### ROS2 패키지
 ```bash
-sudo apt update
-sudo apt install ros-foxy-joint-state-publisher \
-  ros-foxy-joint-state-publisher-gui \
+sudo apt update && sudo apt install \
+  ros-foxy-joint-state-publisher ros-foxy-joint-state-publisher-gui \
   ros-foxy-robot-state-publisher ros-foxy-xacro \
   ros-foxy-navigation2 ros-foxy-nav2-bringup \
-  ros-foxy-rviz2 \
-  ros-foxy-tf2-tools ros-foxy-tf2-ros-py
+  ros-foxy-rviz2 ros-foxy-tf2-tools ros-foxy-tf2-ros-py \
+  ros-foxy-slam-toolbox
 ```
 
-## 빌드
+## 🚀 빌드 및 설치
 
 ```bash
+# F1TENTH gym 설치
 git clone https://github.com/t0mark/F1tenth .
 cd f1tenth_gym && pip3 install -e .
 
-mkdir -p ~/sim_ws/src
-cd ~/sim_ws/src
-git clone https://github.com/f1tenth/f1tenth_gym_ros
-
-# 파일 수정 f1tenth_gym_ros/config/sim.yaml
-# 수정 전: 
-map_path '/sim_ws/src/f1tenth_gym_ros/maps/levine'
-# 수정 후: 
-map_path: '{Home 디렉토리}/sim_ws/src/f1tenth_gym_ros/maps/levine'
-
-source /opt/ros/foxy/setup.bash
+# 워크스페이스 설정
 cd ~/sim_ws
-rosdep update
-rosdep install -i --from-path src --rosdistro foxy -y
+source /opt/ros/foxy/setup.bash
+rosdep update && rosdep install -i --from-path src --rosdistro foxy -y
 colcon build
 
-echo "source ~/sim_ws/install/local_setup.bash" >> ~/.bashrc
+# 환경 설정
 echo "source ~/sim_ws/install/setup.bash" >> ~/.bashrc
 source ~/.bashrc
 ```
 
-## 실행
+## 📦 패키지
 
-### 기본 시뮬레이션
+### 🏎️ [F1TENTH Gym ROS](f1tenth_gym_ros/)
+F1TENTH 시뮬레이션과 ROS2 연결 브리지
 
-```bash
-ros2 launch f1tenth_gym_ros gym_bridge_launch.py
-```
+- **실행**: `ros2 launch f1tenth_gym_ros gym_bridge_launch.py`
+- **기능**: 시뮬레이션 환경, 센서 데이터, 제어 인터페이스
 
-### SLAM (동시 위치추정 및 지도작성)
+<div align="center">
+  <img src="https://raw.githubusercontent.com/f1tenth/f1tenth_gym_ros/main/media/rviz_gym_bridge.png" alt="F1TENTH Simulation" width="600">
+</div>
 
-F1tenth 시뮬레이션에서 SLAM toolbox를 사용한 실시간 지도 생성:
+### 🗺️ [F1TENTH SLAM Toolbox](f1tenth_slam_toolbox/)
+실시간 지도 생성 및 위치 추정
+
+- **실행**: `ros2 launch f1tenth_slam_toolbox f1tenth_slam_launch.py`
+- **기능**: SLAM, 지도 생성, 로봇 위치 추정
+
+<div align="center">
+  <img src="https://docs.ros.org/en/foxy/_images/nav2_tf_tree.png" alt="SLAM TF Tree" width="500">
+</div>
+
+## 🎮 기본 사용법
 
 ```bash
 # 1단계: 시뮬레이션 실행
 ros2 launch f1tenth_gym_ros gym_bridge_launch.py
 
-# 2단계: 새 터미널에서 SLAM toolbox 실행
+# 2단계 (선택): SLAM 실행
 ros2 launch f1tenth_slam_toolbox f1tenth_slam_launch.py
 
-# 3단계: 차량을 움직여서 지도 생성
+# 3단계: 키보드 제어
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
 
-SLAM 설정 및 문제 해결에 대한 자세한 내용: [F1tenth SLAM Toolbox 가이드](f1tenth_slam_toolbox/README.md)
+---
 
-### 키보드 텔레오프
+<div align="center">
 
-- 키보드 텔레오프 활성화: `config/sim.yaml`에서 `kb_teleop: True` 설정
+**🔗 자세한 내용은 각 패키지의 README를 참조하세요**
 
-```bash
-ros2 run teleop_twist_keyboard teleop_twist_keyboard
-```
+| 패키지 | 설명 | 링크 |
+|--------|------|------|
+| 🏎️ f1tenth_gym_ros | 시뮬레이션 브리지 | [📖 가이드](f1tenth_gym_ros/README.md) |
+| 🗺️ f1tenth_slam_toolbox | SLAM 도구 | [📖 가이드](f1tenth_slam_toolbox/README.md) |
 
-| 동작 | 전진 | 전진+좌회전 | 전진+우회전 | 후진 | 후진+좌회전 | 후진+우회전 | 정지 |
-|------|------|-------------|-------------|------|-------------|-------------|------|
-| 키   | `i`  | `u`         | `o`         | `,`  | `m`         | `.`         | `k`  |
-
-#### RViz 초기 위치 설정
-1. RViz에서 "2D Pose Estimate" 도구 선택
-2. 맵상 차량 위치 클릭 후 드래그로 방향 설정
-
-## 시뮬레이션 구성
-
-구성 파일: `f1tenth_gym_ros/config/sim.yaml`
-
-- `map_path`: 맵 파일 경로 (전체 경로 필요)
-- `num_agent`: 에이전트 수 (1 또는 2)
-- `kb_teleop`: 키보드 텔레오프 활성화
-
-구성 변경 후 `colcon build` 재실행 필요
-
-## 토픽 구조
-
-### 발행 토픽 (Published)
-
-**센서 데이터**
-| 토픽명 | 메시지 타입 | 주파수 | 설명 |
-|--------|-------------|---------|------|
-| `/scan` | `sensor_msgs/LaserScan` | 250Hz | 주 차량 라이다 스캔 데이터 |
-| `/ego_racecar/odom` | `nav_msgs/Odometry` | 250Hz | 주 차량 오도메트리 정보 |
-| `/opp_scan` | `sensor_msgs/LaserScan` | 250Hz | 상대방 라이다 (2 에이전트) |
-| `/opp_racecar/odom` | `nav_msgs/Odometry` | 250Hz | 상대방 오도메트리 (2 에이전트) |
-| `/ego_racecar/opp_odom` | `nav_msgs/Odometry` | 250Hz | 주 차량 네임스페이스의 상대방 정보 |
-| `/opp_racecar/ego_odom` | `nav_msgs/Odometry` | 250Hz | 상대방 네임스페이스의 주 차량 정보 |
-
-**환경 정보**
-| 토픽명 | 메시지 타입 | 주파수 | 설명 |
-|--------|-------------|---------|------|
-| `/map` | `nav_msgs/OccupancyGrid` | 정적 | 트랙 맵 |
-| `/tf` | `tf2_msgs/TFMessage` | 250Hz | 동적 좌표 변환 |
-| `/tf_static` | `tf2_msgs/TFMessage` | 정적 | 정적 좌표 변환 |
-| `/joint_states` | `sensor_msgs/JointState` | 250Hz | 관절 상태 |
-
-
-### 구독 토픽 (Subscribed)
-
-**제어 명령**
-| 토픽명 | 메시지 타입 | 처리 주파수 | 설명 |
-|--------|-------------|-------------|------|
-| `/drive` | `ackermann_msgs/AckermannDriveStamped` | 100Hz | 주 차량 조향/가속 명령 |
-| `/cmd_vel` | `geometry_msgs/Twist` | 실시간 | 키보드 텔레오프 속도 명령 (kb_teleop 활성화 시) |
-| `/opp_drive` | `ackermann_msgs/AckermannDriveStamped` | 100Hz | 상대방 드라이브 명령 (2 에이전트) |
-
-**RViz 상호작용**
-| 토픽명 | 메시지 타입 | 기능 | 설명 |
-|--------|-------------|------|------|
-| `/initialpose` | `geometry_msgs/PoseWithCovarianceStamped` | ego 리셋 | 주 차량 위치 초기화 (RViz "2D Pose Estimate") |
-| `/goal_pose` | `geometry_msgs/PoseStamped` | opp 리셋 | 상대방 차량 위치 설정 (RViz "2D Nav Goal") |
-
-> ⚠️ **주의**: RViz 도구용 토픽은 직접 발행하지 마세요. RViz GUI 도구를 사용하세요.
-
-## 토픽 세부 정보
-
-### 라이다 스캔 (`sensor_msgs/LaserScan`)
-- **각도 범위**: FOV 파라미터에 따라 설정 (기본값 확인 필요)
-- **빔 개수**: scan_beams 파라미터에 따라 설정
-- **최대 거리**: laser_max_range (기본 100.0m)
-- **base_link로부터 거리**: scan_distance_to_base_link 파라미터
-
-### 제어 명령 처리
-- **시뮬레이션 스텝**: 100Hz (0.01초 간격)
-- **센서 데이터 발행**: 250Hz (0.004초 간격)
-- **Ackermann 드라이브**: speed (m/s), steering_angle (rad)
-- **키보드 텔레오프**: linear.x (전진/후진), angular.z (좌/우 조향 ±0.3rad)
-
-### TF (좌표 변환) 구조
-시뮬레이션에서 발행하는 TF 트리는 다음과 같습니다:
-
-#### 단일 에이전트 (num_agent: 1)
-```
-map
-└── ego_racecar/base_link
-    ├── ego_racecar/laser
-    ├── ego_racecar/front_left_hinge
-    │   └── ego_racecar/front_left_wheel
-    └── ego_racecar/front_right_hinge
-        └── ego_racecar/front_right_wheel
-```
-
-#### 다중 에이전트 (num_agent: 2)
-```
-map
-├── ego_racecar/base_link
-│   ├── ego_racecar/laser
-│   ├── ego_racecar/front_left_hinge
-│   │   └── ego_racecar/front_left_wheel
-│   └── ego_racecar/front_right_hinge
-│       └── ego_racecar/front_right_wheel
-└── opp_racecar/base_link
-    ├── opp_racecar/laser
-    ├── opp_racecar/front_left_hinge
-    │   └── opp_racecar/front_left_wheel
-    └── opp_racecar/front_right_hinge
-        └── opp_racecar/front_right_wheel
-```
-
-**TF 변환 세부사항:**
-- **map → base_link**: 차량의 전역 위치 (x, y, yaw)
-- **base_link → laser**: 라이다 센서 위치 (scan_distance_to_base_link 파라미터)
-- **base_link → front_*_hinge**: 바퀴 힌지 고정 위치 (정적)
-- **front_*_hinge → front_*_wheel**: 조향각 반영 (동적, steering_angle)
+</div>
