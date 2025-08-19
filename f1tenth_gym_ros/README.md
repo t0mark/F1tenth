@@ -1,9 +1,5 @@
 # 🏎️ F1TENTH Gym ROS2 Bridge
 
-<div align="center">
-  <img src="https://f1tenth.org/assets/img/f1tenth_logo_wt.png" alt="F1TENTH Logo" width="400">
-</div>
-
 F1TENTH Gym 시뮬레이터와 ROS2를 연결하는 브리지 패키지입니다. 실제 F1TENTH 차량의 물리 시뮬레이션을 ROS2 환경에서 실행할 수 있습니다.
 
 ## ✨ 주요 기능
@@ -13,10 +9,6 @@ F1TENTH Gym 시뮬레이터와 ROS2를 연결하는 브리지 패키지입니다
 - **🎮 다양한 제어**: Ackermann 드라이브, 키보드 텔레오프 지원
 - **🗺️ 맵 지원**: 다양한 트랙 맵 사용 가능
 - **👥 멀티 에이전트**: 단일/다중 차량 시뮬레이션
-
-<div align="center">
-  <img src="https://raw.githubusercontent.com/f1tenth/f1tenth_gym/main/docs/images/f1tenth_gym_screenshot.png" alt="F1TENTH Simulation" width="600">
-</div>
 
 ## 📁 패키지 구조
 
@@ -71,10 +63,6 @@ kb_teleop: True               # 키보드 제어 활성화
 
 ## 🔄 ROS2 토픽 인터페이스
 
-<div align="center">
-  <img src="https://docs.ros.org/en/humble/_images/rqt_graph.png" alt="ROS2 Topic Graph" width="500">
-</div>
-
 ### 📤 발행 토픽 (Published Topics)
 
 | 토픽명 | 메시지 타입 | 주파수 | 설명 |
@@ -113,10 +101,6 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 | 전진+우회전 | `o` | 우측 커브 |
 | 후진 | `,` | 후진 |
 | 정지 | `k` | 정지 |
-
-<div align="center">
-  <img src="https://raw.githubusercontent.com/ros-teleop/teleop_twist_keyboard/melodic-devel/keyboard_teleop.png" alt="Keyboard Teleop" width="300">
-</div>
 
 ### RViz 차량 위치 설정
 1. RViz에서 **"2D Pose Estimate"** 도구 선택
@@ -160,10 +144,6 @@ map
 - 고속 주행 테스트용
 - 레이싱 알고리즘 개발용
 
-<div align="center">
-  <img src="https://f1tenth.org/assets/img/levine_2nd.png" alt="Levine Hall Map" width="400">
-</div>
-
 ## 🔧 트러블슈팅
 
 ### 자주 발생하는 문제
@@ -191,10 +171,3 @@ map
 - **F1TENTH Gym**: https://github.com/f1tenth/f1tenth_gym
 - **ROS2 Foxy**: https://docs.ros.org/en/foxy/
 
----
-
-<div align="center">
-
-**🏆 F1TENTH 자율주행 레이싱 시뮬레이션을 즐겨보세요!**
-
-</div>
