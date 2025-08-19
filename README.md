@@ -68,6 +68,23 @@ source ~/.bashrc
 ros2 launch f1tenth_gym_ros gym_bridge_launch.py
 ```
 
+### SLAM (동시 위치추정 및 지도작성)
+
+F1tenth 시뮬레이션에서 SLAM toolbox를 사용한 실시간 지도 생성:
+
+```bash
+# 1단계: 시뮬레이션 실행
+ros2 launch f1tenth_gym_ros gym_bridge_launch.py
+
+# 2단계: 새 터미널에서 SLAM toolbox 실행
+ros2 launch f1tenth_slam_toolbox f1tenth_slam_launch.py
+
+# 3단계: 차량을 움직여서 지도 생성
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
+```
+
+SLAM 설정 및 문제 해결에 대한 자세한 내용: [F1tenth SLAM Toolbox 가이드](f1tenth_slam_toolbox/README.md)
+
 ### 키보드 텔레오프
 
 - 키보드 텔레오프 활성화: `config/sim.yaml`에서 `kb_teleop: True` 설정
