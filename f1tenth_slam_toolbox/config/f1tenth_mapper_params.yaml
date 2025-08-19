@@ -3,6 +3,7 @@ slam_toolbox:
 
     # ROS Parameters - F1tenth에 맞게 수정
     map_frame: map
+    odom_frame: odom
     base_frame: ego_racecar/base_link  # 시뮬레이터와 정확히 일치
     scan_topic: /scan_fixed  # 원본 스캔 사용
     mode: mapping
