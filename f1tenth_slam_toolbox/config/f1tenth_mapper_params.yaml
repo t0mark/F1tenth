@@ -22,19 +22,6 @@ slam_toolbox:
     publish_tf: false
     provide_odom_frame: false
 
-    # F1tenth 시뮬레이션을 위한 설정
-    debug_logging: false
-    throttle_scans: 1
-    transform_publish_period: 0.0  # TF 발행 완전 비활성화
-    map_update_interval: 5.0
-    resolution: 0.05
-    max_laser_range: 20.0
-    minimum_time_interval: 0.5
-    transform_timeout: 1.0
-    tf_buffer_duration: 30.
-    stack_size_to_use: 40000000
-    enable_interactive_mode: true
-
     # General Parameters
     use_scan_matching: true
     use_scan_barycenter: true
