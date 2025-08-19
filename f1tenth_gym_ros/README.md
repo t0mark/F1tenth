@@ -1,160 +1,200 @@
-# F1TENTH gym environment ROS2 communication bridge
-This is a containerized ROS communication bridge for the F1TENTH gym environment that turns it into a simulation in ROS2.
+# 🏎️ F1TENTH Gym ROS2 Bridge
 
-# Installation
+<div align="center">
+  <img src="https://f1tenth.org/assets/img/f1tenth_logo_wt.png" alt="F1TENTH Logo" width="400">
+</div>
 
-**Supported System:**
+F1TENTH Gym 시뮬레이터와 ROS2를 연결하는 브리지 패키지입니다. 실제 F1TENTH 차량의 물리 시뮬레이션을 ROS2 환경에서 실행할 수 있습니다.
 
-- Ubuntu (tested on 20.04) native with ROS 2
-- Ubuntu (tested on 20.04) with an NVIDIA gpu and nvidia-docker2 support
-- Windows 10, macOS, and Ubuntu without an NVIDIA gpu (using noVNC)
+## ✨ 주요 기능
 
-This installation guide will be split into instruction for installing the ROS 2 package natively, and for systems with or without an NVIDIA gpu in Docker containers.
+- **🏁 실시간 레이싱 시뮬레이션**: F1TENTH 차량의 물리적 특성 시뮬레이션
+- **📡 센서 데이터**: LiDAR 스캔, 오도메트리 데이터 제공
+- **🎮 다양한 제어**: Ackermann 드라이브, 키보드 텔레오프 지원
+- **🗺️ 맵 지원**: 다양한 트랙 맵 사용 가능
+- **👥 멀티 에이전트**: 단일/다중 차량 시뮬레이션
 
-## Native on Ubuntu 20.04
+<div align="center">
+  <img src="https://raw.githubusercontent.com/f1tenth/f1tenth_gym/main/docs/images/f1tenth_gym_screenshot.png" alt="F1TENTH Simulation" width="600">
+</div>
 
-**Install the following dependencies:**
-- **ROS 2** Follow the instructions [here](https://docs.ros.org/en/foxy/Installation.html) to install ROS 2 Foxy.
-- **F1TENTH Gym**
-  ```bash
-  git clone https://github.com/f1tenth/f1tenth_gym
-  cd f1tenth_gym && pip3 install -e .
-  ```
+## 📁 패키지 구조
 
-**Installing the simulation:**
-- Create a workspace: ```cd $HOME && mkdir -p sim_ws/src```
-- Clone the repo into the workspace:
-  ```bash
-  cd $HOME/sim_ws/src
-  git clone https://github.com/f1tenth/f1tenth_gym_ros
-  ```
-- Update correct parameter for path to map file:
-  Go to `sim.yaml` [https://github.com/f1tenth/f1tenth_gym_ros/blob/main/config/sim.yaml](https://github.com/f1tenth/f1tenth_gym_ros/blob/main/config/sim.yaml) in your cloned repo, change the `map_path` parameter to point to the correct location. It should be `'<your_home_dir>/sim_ws/src/f1tenth_gym_ros/maps/levine'`
-- Install dependencies with rosdep:
-  ```bash
-  source /opt/ros/foxy/setup.bash
-  cd ..
-  rosdep install -i --from-path src --rosdistro foxy -y
-  ```
-- Build the workspace: ```colcon build```
-
-## With an NVIDIA gpu:
-
-**Install the following dependencies:**
-
-- **Docker** Follow the instructions [here](https://docs.docker.com/install/linux/docker-ce/ubuntu/) to install Docker. A short tutorial can be found [here](https://docs.docker.com/get-started/) if you're not familiar with Docker. If you followed the post-installation steps you won't have to prepend your docker and docker-compose commands with sudo.
-- **nvidia-docker2**, follow the instructions [here](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) if you have a support GPU. It is also possible to use Intel integrated graphics to forward the display, see details instructions from the Rocker repo. If you are on windows with an NVIDIA GPU, you'll have to use WSL (Windows Subsystem for Linux). Please refer to the guide [here](https://developer.nvidia.com/cuda/wsl), [here](https://docs.nvidia.com/cuda/wsl-user-guide/index.html), and [here](https://dilililabs.com/zh/blog/2021/01/26/deploying-docker-with-gpu-support-on-windows-subsystem-for-linux/).
-- **rocker** [https://github.com/osrf/rocker](https://github.com/osrf/rocker). This is a tool developed by OSRF to run Docker images with local support injected. We use it for GUI forwarding. If you're on Windows, WSL should also support this.
-
-**Installing the simulation:**
-
-1. Clone this repo
-2. Build the docker image by:
-```bash
-$ cd f1tenth_gym_ros
-$ docker build -t f1tenth_gym_ros -f Dockerfile .
 ```
-3. To run the containerized environment, start a docker container by running the following. (example showned here with nvidia-docker support). By running this, the current directory that you're in (should be `f1tenth_gym_ros`) is mounted in the container at `/sim_ws/src/f1tenth_gym_ros`. Which means that the changes you make in the repo on the host system will also reflect in the container.
-```bash
-$ rocker --nvidia --x11 --volume .:/sim_ws/src/f1tenth_gym_ros -- f1tenth_gym_ros
+f1tenth_gym_ros/
+├── config/
+│   └── sim.yaml              # 시뮬레이션 설정 파일
+├── f1tenth_gym_ros/
+│   ├── __init__.py
+│   ├── gym_bridge.py         # 메인 브리지 노드
+│   └── teleop_twist_keyboard.py
+├── launch/
+│   ├── gym_bridge_launch.py  # 런치 파일
+│   ├── gym_bridge.rviz       # RViz 설정
+│   ├── ego_racecar.xacro     # 차량 모델 (메인)
+│   └── opp_racecar.xacro     # 차량 모델 (상대방)
+├── maps/
+│   ├── levine.png/.yaml      # Levine 홀 맵
+│   └── Spielberg_map.png/.yaml # 스필버그 맵
+└── README.md
 ```
 
-## Without an NVIDIA gpu:
+## ⚙️ 설정 파일
 
-**Install the following dependencies:**
+### config/sim.yaml
+주요 설정 파라미터:
 
-If your system does not support nvidia-docker2, noVNC will have to be used to forward the display.
-- Again you'll need **Docker**. Follow the instruction from above.
-- Additionally you'll need **docker-compose**. Follow the instruction [here](https://docs.docker.com/compose/install/) to install docker-compose.
+```yaml
+# 차량 네임스페이스 및 토픽
+ego_namespace: 'ego_racecar'
+ego_scan_topic: 'scan'
+ego_odom_topic: 'odom'
+ego_drive_topic: 'drive'
 
-**Installing the simulation:**
+# LiDAR 설정
+scan_fov: 4.7                 # 시야각 (라디안)
+scan_beams: 1080              # 빔 개수
+scan_distance_to_base_link: 0.0
 
-1. Clone this repo 
-2. Bringup the novnc container and the sim container with docker-compose:
-```bash
-docker-compose up
-``` 
-3. In a separate terminal, run the following, and you'll have the a bash session in the simulation container. `tmux` is available for convenience.
-```bash
-docker exec -it f1tenth_gym_ros-sim-1 /bin/bash
+# 맵 설정  
+map_path: '/path/to/map'      # ⚠️ 절대 경로 필요!
+num_agent: 1                  # 에이전트 수 (1 또는 2)
+
+# 시작 위치
+sx: 0.0                       # 시작 X 좌표
+sy: 0.0                       # 시작 Y 좌표 
+stheta: 0.0                   # 시작 각도
+
+# 키보드 텔레오프
+kb_teleop: True               # 키보드 제어 활성화
 ```
-4. In your browser, navigate to [http://localhost:8080/vnc.html](http://localhost:8080/vnc.html), you should see the noVNC logo with the connect button. Click the connect button to connect to the session.
 
-# Launching the Simulation
+## 🔄 ROS2 토픽 인터페이스
 
-1. `tmux` is included in the contianer, so you can create multiple bash sessions in the same terminal.
-2. To launch the simulation, make sure you source both the ROS2 setup script and the local workspace setup script. Run the following in the bash session from the container:
+<div align="center">
+  <img src="https://docs.ros.org/en/humble/_images/rqt_graph.png" alt="ROS2 Topic Graph" width="500">
+</div>
+
+### 📤 발행 토픽 (Published Topics)
+
+| 토픽명 | 메시지 타입 | 주파수 | 설명 |
+|--------|-------------|---------|------|
+| `/scan` | `sensor_msgs/LaserScan` | 250Hz | 메인 차량 LiDAR 데이터 |
+| `/ego_racecar/odom` | `nav_msgs/Odometry` | 250Hz | 메인 차량 오도메트리 |
+| `/map` | `nav_msgs/OccupancyGrid` | 정적 | 트랙 맵 |
+| `/tf` | `tf2_msgs/TFMessage` | 250Hz | 동적 좌표 변환 |
+| `/tf_static` | `tf2_msgs/TFMessage` | 정적 | 정적 좌표 변환 |
+| `/joint_states` | `sensor_msgs/JointState` | 250Hz | 휠 조인트 상태 |
+
+### 📥 구독 토픽 (Subscribed Topics)
+
+| 토픽명 | 메시지 타입 | 설명 |
+|--------|-------------|------|
+| `/drive` | `ackermann_msgs/AckermannDriveStamped` | Ackermann 드라이브 제어 |
+| `/cmd_vel` | `geometry_msgs/Twist` | 키보드 텔레오프 제어 |
+| `/initialpose` | `geometry_msgs/PoseWithCovarianceStamped` | 차량 위치 리셋 (RViz) |
+
+## 🎮 사용법
+
+### 기본 실행
 ```bash
-$ source /opt/ros/foxy/setup.bash
-$ source install/local_setup.bash
-$ ros2 launch f1tenth_gym_ros gym_bridge_launch.py
-```
-A rviz window should pop up showing the simulation either on your host system or in the browser window depending on the display forwarding you chose.
+# 시뮬레이션 실행
+ros2 launch f1tenth_gym_ros gym_bridge_launch.py
 
-You can then run another node by creating another bash session in `tmux`.
-
-# Configuring the simulation
-- The configuration file for the simulation is at `f1tenth_gym_ros/config/sim.yaml`.
-- Topic names and namespaces can be configured but is recommended to leave uncahnged.
-- The map can be changed via the `map_path` parameter. You'll have to use the full path to the map file in the container. The map follows the ROS convention. It is assumed that the image file and the `yaml` file for the map are in the same directory with the same name. See the note below about mounting a volume to see where to put your map file.
-- The `num_agent` parameter can be changed to either 1 or 2 for single or two agent racing.
-- The ego and opponent starting pose can also be changed via parameters, these are in the global map coordinate frame.
-
-The entire directory of the repo is mounted to a workspace `/sim_ws/src` as a package. All changes made in the repo on the host system will also reflect in the container. After changing the configuration, run `colcon build` again in the container workspace to make sure the changes are reflected.
-
-# Topics published by the simulation
-
-In **single** agent:
-
-`/scan`: The ego agent's laser scan
-
-`/ego_racecar/odom`: The ego agent's odometry
-
-`/map`: The map of the environment
-
-A `tf` tree is also maintained.
-
-In **two** agents:
-
-In addition to the topics available in the single agent scenario, these topics are also available:
-
-`/opp_scan`: The opponent agent's laser scan
-
-`/ego_racecar/opp_odom`: The opponent agent's odometry for the ego agent's planner
-
-`/opp_racecar/odom`: The opponent agents' odometry
-
-`/opp_racecar/opp_odom`: The ego agent's odometry for the opponent agent's planner
-
-# Topics subscribed by the simulation
-
-In **single** agent:
-
-`/drive`: The ego agent's drive command via `AckermannDriveStamped` messages
-
-`/initalpose`: This is the topic for resetting the ego's pose via RViz's 2D Pose Estimate tool. Do **NOT** publish directly to this topic unless you know what you're doing.
-
-TODO: kb teleop topics
-
-In **two** agents:
-
-In addition to all topics in the single agent scenario, these topics are also available:
-
-`/opp_drive`: The opponent agent's drive command via `AckermannDriveStamped` messages. Note that you'll need to publish to **both** the ego's drive topic and the opponent's drive topic for the cars to move when using 2 agents.
-
-`/goal_pose`: This is the topic for resetting the opponent agent's pose via RViz's 2D Goal Pose tool. Do **NOT** publish directly to this topic unless you know what you're doing.
-
-# Keyboard Teleop
-
-The keyboard teleop node from `teleop_twist_keyboard` is also installed as part of the simulation's dependency. To enable keyboard teleop, set `kb_teleop` to `True` in `sim.yaml`. After launching the simulation, in another terminal, run:
-```bash
+# 키보드 텔레오프 (새 터미널)
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
-Then, press `i` to move forward, `u` and `o` to move forward and turn, `,` to move backwards, `m` and `.` to move backwards and turn, and `k` to stop in the terminal window running the teleop node.
 
-# Developing and creating your own agent in ROS 2
+### 키보드 제어
+| 동작 | 키 | 설명 |
+|------|----|----- |
+| 전진 | `i` | 직진 |
+| 전진+좌회전 | `u` | 좌측 커브 |
+| 전진+우회전 | `o` | 우측 커브 |
+| 후진 | `,` | 후진 |
+| 정지 | `k` | 정지 |
 
-There are multiple ways to launch your own agent to control the vehicles.
+<div align="center">
+  <img src="https://raw.githubusercontent.com/ros-teleop/teleop_twist_keyboard/melodic-devel/keyboard_teleop.png" alt="Keyboard Teleop" width="300">
+</div>
 
-- The first one is creating a new package for your agent in the `/sim_ws` workspace inside the sim container. After launch the simulation, launch the agent node in another bash session while the sim is running.
-- The second one is to create a new ROS 2 container for you agent node. Then create your own package and nodes inside. Launch the sim container and the agent container both. With default networking configurations for `docker`, the behavior is to put The two containers on the same network, and they should be able to discover and talk to each other on different topics. If you're using noVNC, create a new service in `docker-compose.yml` for your agent node. You'll also have to put your container on the same network as the sim and novnc containers.
+### RViz 차량 위치 설정
+1. RViz에서 **"2D Pose Estimate"** 도구 선택
+2. 맵상에서 차량 위치 클릭
+3. 드래그하여 차량 방향 설정
+
+## 🚗 TF (좌표 변환) 구조
+
+<div align="center">
+  <img src="../img/tf_tree.png" alt="F1TENTH TF Tree" width="800">
+  <p><em>실제 F1TENTH 시뮬레이션의 TF 트리 구조</em></p>
+</div>
+
+```
+map
+└── ego_racecar/base_link
+    ├── ego_racecar/laser        # LiDAR 센서
+    ├── ego_racecar/front_left_hinge
+    │   └── ego_racecar/front_left_wheel
+    └── ego_racecar/front_right_hinge
+        └── ego_racecar/front_right_wheel
+```
+
+## 📊 성능 특성
+
+- **시뮬레이션 주파수**: 100Hz (물리 계산)
+- **센서 데이터 발행**: 250Hz
+- **LiDAR 범위**: 0~30m
+- **차량 속도**: 최대 20m/s
+- **조향각**: ±0.4 라디안
+
+## 🗺️ 지원 맵
+
+### Levine 홀 (기본)
+- 실제 펜실베니아 대학교 Levine 홀 기반
+- 복잡한 복도 구조
+- SLAM 테스트에 적합
+
+### Spielberg 맵
+- F1 트랙 스타일
+- 고속 주행 테스트용
+- 레이싱 알고리즘 개발용
+
+<div align="center">
+  <img src="https://f1tenth.org/assets/img/levine_2nd.png" alt="Levine Hall Map" width="400">
+</div>
+
+## 🔧 트러블슈팅
+
+### 자주 발생하는 문제
+
+1. **맵 파일을 찾을 수 없음**
+   ```bash
+   # config/sim.yaml에서 절대 경로 확인
+   map_path: '/home/user/sim_ws/src/f1tenth_gym_ros/maps/levine'
+   ```
+
+2. **차량이 움직이지 않음**
+   ```bash
+   # 토픽 발행 확인
+   ros2 topic echo /drive
+   ros2 topic pub /drive ackermann_msgs/AckermannDriveStamped "..."
+   ```
+
+3. **RViz에서 센서 데이터가 보이지 않음**
+   - Fixed Frame을 'map'으로 설정
+   - LaserScan 토픽을 '/scan'으로 설정
+
+## 🔗 관련 링크
+
+- **F1TENTH**: https://f1tenth.org/
+- **F1TENTH Gym**: https://github.com/f1tenth/f1tenth_gym
+- **ROS2 Foxy**: https://docs.ros.org/en/foxy/
+
+---
+
+<div align="center">
+
+**🏆 F1TENTH 자율주행 레이싱 시뮬레이션을 즐겨보세요!**
+
+</div>
