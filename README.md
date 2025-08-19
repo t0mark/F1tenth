@@ -1,9 +1,5 @@
 # F1TENTH ROS2 Simulation Workspace
 
-<div align="center">
-  <img src="https://f1tenth.org/assets/img/f1tenth_logo_wt.png" alt="F1TENTH Logo" width="400">
-</div>
-
 F1TENTH 자율주행 레이싱을 위한 ROS2 시뮬레이션 환경입니다.
 
 ## 📋 시스템 요구사항
@@ -61,10 +57,6 @@ F1TENTH 시뮬레이션과 ROS2 연결 브리지
 - **실행**: `ros2 launch f1tenth_gym_ros gym_bridge_launch.py`
 - **기능**: 시뮬레이션 환경, 센서 데이터, 제어 인터페이스
 
-<div align="center">
-  <img src="https://raw.githubusercontent.com/f1tenth/f1tenth_gym_ros/main/media/rviz_gym_bridge.png" alt="F1TENTH Simulation" width="600">
-</div>
-
 ### 🗺️ [F1TENTH SLAM Toolbox](f1tenth_slam_toolbox/)
 실시간 지도 생성 및 위치 추정
 
@@ -72,7 +64,8 @@ F1TENTH 시뮬레이션과 ROS2 연결 브리지
 - **기능**: SLAM, 지도 생성, 로봇 위치 추정
 
 <div align="center">
-  <img src="https://docs.ros.org/en/foxy/_images/nav2_tf_tree.png" alt="SLAM TF Tree" width="500">
+  <img src="img/slam_dem.png" alt="SLAM Demo Result" width="500">
+  <p><em>SLAM으로 생성된 지도 예시</em></p>
 </div>
 
 ## 🎮 기본 사용법
@@ -96,7 +89,7 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 
 | 패키지 | 설명 | 링크 |
 |--------|------|------|
-| 🏎️ f1tenth_gym_ros | 시뮬레이션 브리지 | [📖 가이드](f1tenth_gym_ros/README.md) |
-| 🗺️ f1tenth_slam_toolbox | SLAM 도구 | [📖 가이드](f1tenth_slam_toolbox/README.md) |
+| 🏎️ f1tenth_gym_ros | 시뮬레이션 브리지 | [📖 가이드](f1tenth_gym_ros) |
+| 🗺️ f1tenth_slam_toolbox | SLAM 도구 | [📖 가이드](f1tenth_slam_toolbox) |
 
 </div>

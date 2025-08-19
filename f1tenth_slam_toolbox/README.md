@@ -1,16 +1,8 @@
 # 🗺️ F1tenth SLAM Toolbox
 
-<div align="center">
-  <img src="https://raw.githubusercontent.com/SteveMacenski/slam_toolbox/ros2/docs/logo.png" alt="SLAM Toolbox Logo" width="300">
-</div>
-
 F1tenth Racing Simulation을 위한 SLAM Toolbox 설정 패키지입니다. 기존 slam_toolbox와의 TF 충돌을 방지하고 F1tenth 시뮬레이션 환경에 최적화된 설정을 제공합니다.
 
 ## ⚠️ 해결된 문제점들
-
-<div align="center">
-  <img src="https://docs.ros.org/en/humble/_images/tf2_frames_example.png" alt="TF Frames" width="400">
-</div>
 
 ### 1. 🔗 TF 프레임 및 토픽 이름 문제
 
@@ -24,10 +16,6 @@ F1tenth Racing Simulation을 위한 SLAM Toolbox 설정 패키지입니다. 기�
 
 ### 2. 📡 LiDAR 스캔 개수 문제
 
-<div align="center">
-  <img src="https://classic.gazebosim.org/assets/tutorials/ros_gzplugins/hokuyo_laser.png" alt="LiDAR Scan" width="300">
-</div>
-
 **문제**: 스캔 데이터 개수 불일치
 - F1tenth gym: 1080개 beam 데이터 생성
 - SLAM toolbox: 1081개 beam 예상 (angle_min/max/increment 불일치)
@@ -37,10 +25,6 @@ F1tenth Racing Simulation을 위한 SLAM Toolbox 설정 패키지입니다. 기�
 - `angle_max = angle_min + angle_increment * (num_readings - 1)`
 
 ### 3. ⏰ 시간 동기화 문제
-
-<div align="center">
-  <img src="https://docs.ros.org/en/humble/_images/time_sync.png" alt="Time Synchronization" width="350">
-</div>
 
 **문제**: 패키지 간 시간 설정 불일치
 - F1tenth gym: `use_sim_time: True` (하드코딩)
@@ -89,10 +73,6 @@ f1tenth_slam_toolbox/
 
 ## 🚀 사용법
 
-<div align="center">
-  <img src="https://navigation.ros.org/images/slam_toolbox_demo.gif" alt="SLAM Demo" width="500">
-</div>
-
 ```bash
 # 1단계: F1tenth 시뮬레이션 실행
 ros2 launch f1tenth_gym_ros gym_bridge_launch.py
@@ -108,3 +88,21 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 - **RViz**: 실시간 지도 생성 과정 시각화
 - **토픽**: `/slam_map`에서 생성된 지도 확인
 - **TF**: 로봇 위치 추정 결과 확인
+
+<div align="center">
+  <img src="../img/slam_dem.png" alt="SLAM Result" width="500">
+  <p><em>F1TENTH SLAM으로 생성된 지도 결과</em></p>
+</div>
+
+## ⚠️ 일반적인 경고 메시지
+
+실행 시 다음과 같은 경고가 나타날 수 있습니다:
+
+```bash
+[slam_toolbox]: Message Filter dropping message: frame 'ego_racecar/base_link' at time 1755634566.233 for reason 'Unknown'
+```
+
+**이는 무시해도 되는 경고입니다:**
+- **원인**: 정적 TF 변환의 발행 주파수가 높아서 발생
+- **영향**: SLAM 동작에 전혀 문제없음
+- **해결**: 별도 조치 불필요 (정상 동작)
