@@ -2,10 +2,9 @@ slam_toolbox:
   ros__parameters:
 
     # ROS Parameters - F1tenth에 맞게 수정
-    odom_frame: map  # F1tenth가 map->base_link를 직접 제공하므로 map으로 설정
     map_frame: map
     base_frame: ego_racecar/base_link  # 시뮬레이터와 정확히 일치
-    scan_topic: /scan  # 원본 스캔 사용
+    scan_topic: /scan_fixed  # 원본 스캔 사용
     mode: mapping
 
     # 실제 시간 사용 설정 (F1tenth는 실시간 시뮬레이션)
