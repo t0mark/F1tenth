@@ -44,9 +44,6 @@ class ScanHeaderFix(Node):
         num_readings = len(msg.ranges)
         fixed_msg.angle_max = msg.angle_min + msg.angle_increment * (num_readings - 1)
         
-        # frame_id를 base_link로 변경 (SLAM toolbox 호환)
-        fixed_msg.header.frame_id = 'ego_racecar/base_link'
-        
         self.publisher.publish(fixed_msg)
 
 def main(args=None):
