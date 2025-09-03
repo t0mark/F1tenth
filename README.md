@@ -63,6 +63,13 @@ F1TENTH 시뮬레이션과 ROS2 연결 브리지
 - **실행**: `ros2 launch f1tenth_slam_toolbox f1tenth_slam_launch.py`
 - **기능**: SLAM, 지도 생성, 로봇 위치 추정
 
+### 🧭 [F1TENTH Path Planner](f1tenth_path_planner/)
+센터라인 기반 Global Path + LiDAR Local Path (제어 분리, 경로 생성만)
+
+- 실행: `ros2 launch f1tenth_path_planner path_planner_launch.py`
+- 출력: `/global_path`(map 프레임), `/local_path`(map 프레임)
+- 의존성(Python): `opencv-python`, `scikit-image`, `numpy`, `PyYAML`
+
 <div align="center">
   <img src="img/slam_dem.png" alt="SLAM Demo Result" width="500">
   <p><em>SLAM으로 생성된 지도 예시</em></p>
