@@ -93,18 +93,13 @@ f1tenth_path_planner/
 ## 📸 시각화 예시
 
 <div align="center">
-  <img src="img/global_path.png" alt="Global Path Example" width="400">
+  <img src="../img/global_path.png" alt="Global Path Example" width="400">
   <p><em>센터라인 기반 Global Path 예시</em></p>
 </div>
 
 <div align="center">
-  <img src="img/local_path.png" alt="Local Path Example" width="400">  
+  <img src="../img/local_path.png" alt="Local Path Example" width="400">  
   <p><em>LiDAR 기반 Local Path 예시</em></p>
-</div>
-
-<div align="center">
-  <img src="img/path_visualization.png" alt="Path Visualization" width="500">
-  <p><em>RViz에서 Global Path와 Local Path 시각화</em></p>
 </div>
 
 ## 📝 사용 예시
