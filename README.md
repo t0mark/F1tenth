@@ -56,12 +56,14 @@ F1TENTH 시뮬레이션과 ROS2 연결 브리지
 
 - **실행**: `ros2 launch f1tenth_gym_ros gym_bridge_launch.py`
 - **기능**: 시뮬레이션 환경, 센서 데이터, 제어 인터페이스
+- **출력**: 시뮬레이션 전반에 필요한 토픽 및 TF
 
 ### 🗺️ [F1TENTH SLAM Toolbox](f1tenth_slam_toolbox/)
 실시간 지도 생성 및 위치 추정
 
 - **실행**: `ros2 launch f1tenth_slam_toolbox f1tenth_slam_launch.py`
 - **기능**: SLAM, 지도 생성, 로봇 위치 추정
+- **출력**: `/slam_map` (map 프레임)
 
 <div align="center">
   <img src="img/slam_dem.png" alt="SLAM Demo Result" width="500">
@@ -74,7 +76,6 @@ F1TENTH 시뮬레이션과 ROS2 연결 브리지
 - **실행**: `ros2 launch f1tenth_path_planner path_planner_launch.py`
 - **기능**: Global 경로 계획, LiDAR 기반 Local 장애물 회피
 - **출력**: `/global_path` (map 프레임), `/local_path` (map 프레임)
-- **의존성**: opencv-python, scikit-image, numpy, PyYAML
 
 <div align="center">
   <img src="img/global_path.png" alt="Path Planning Visualization" width="250">
