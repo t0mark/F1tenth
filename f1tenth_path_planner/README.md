@@ -93,13 +93,18 @@ f1tenth_path_planner/
 ## 📸 시각화 예시
 
 <div align="center">
-  <img src="../img/global_path.png" alt="Global Path Example" width="400">
-  <p><em>센터라인 기반 Global Path 예시</em></p>
-</div>
-
-<div align="center">
-  <img src="../img/local_path.png" alt="Local Path Example" width="400">  
-  <p><em>LiDAR 기반 Local Path 예시</em></p>
+  <table>
+    <tr>
+      <td align="center">
+        <img src="../img/global_path.png" alt="Global Path Example" width="350">
+        <p><em>센터라인 기반 Global Path 예시</em></p>
+      </td>
+      <td align="center">
+        <img src="../img/local_path.png" alt="Local Path Example" width="350">
+        <p><em>LiDAR 기반 Local Path 예시</em></p>
+      </td>
+    </tr>
+  </table>
 </div>
 
 ## 📝 사용 예시
