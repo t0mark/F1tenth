@@ -6,6 +6,14 @@ F1TENTH 자율주행 레이싱을 위한 Pure Pursuit 기반 차량 제어 패�
 
 이 패키지는 Pure Pursuit 알고리즘을 사용하여 F1TENTH 차량의 조향을 제어합니다. Local path를 우선적으로 사용하며, 사용할 수 없는 경우 Global path를 백업으로 사용합니다.
 
+<div align="center">
+  <video width="500" controls>
+    <source src="../img/control.webm" type="video/webm">
+    Your browser does not support the video tag.
+  </video>
+  <p><em>Pure Pursuit 제어 시스템 동작 데모</em></p>
+</div>
+
 ## 🏗️ 아키텍처
 
 ```

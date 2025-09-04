@@ -87,8 +87,16 @@ Pure Pursuit 기반 차량 제어 모듈
 
 - **실행**: `ros2 launch f1tenth_control pure_pursuit_launch.py`
 - **기능**: Local/Global Path 추종, Pure Pursuit 조향 제어, 고정 속도 제어
-- **입력**: `/local_path`, `/global_path`, `/ego_racecar/odom`
 - **출력**: `/drive` (AckermannDriveStamped)
+
+<div align="center">
+  <video width="500" controls>
+    <source src="img/control.webm" type="video/webm">
+    Your browser does not support the video tag.
+  </video>
+  <p><em>Pure Pursuit 제어 시스템 동작 데모</em></p>
+</div>
+
 
 
 ## 🎮 기본 사용법
