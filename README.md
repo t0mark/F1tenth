@@ -77,7 +77,7 @@ F1TENTH 시뮬레이션과 ROS2 연결 브리지
 - **의존성**: opencv-python, scikit-image, numpy, PyYAML
 
 <div align="center">
-  <img src="img/global_path.png" alt="Path Planning Visualization" width="500">
+  <img src="img/global_path.png" alt="Path Planning Visualization" width="250">
   <p><em>Global Path와 Local Path 시각화 예시</em></p>
 </div>
 
