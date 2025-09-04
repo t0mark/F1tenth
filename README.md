@@ -78,7 +78,7 @@ F1TENTH 시뮬레이션과 ROS2 연결 브리지
 
 <div align="center">
   <img src="img/global_path.png" alt="Path Planning Visualization" width="250">
-  <p><em>Global Path와 Local Path 시각화 예시</em></p>
+  <p><em>Global Path와 Local Path 시각화 예   시</em></p>
 </div>
 
 
@@ -88,10 +88,15 @@ F1TENTH 시뮬레이션과 ROS2 연결 브리지
 # 1단계: 시뮬레이션 실행
 ros2 launch f1tenth_gym_ros gym_bridge_launch.py
 
-# 2단계 (선택): SLAM 실행
+# 2단계: Path Planning
+ros2 launch f1tenth_path_planner path_planner_launch.py
+
+
+# 옵션
+# 인지 모듈: SLAM 실행
 ros2 launch f1tenth_slam_toolbox f1tenth_slam_launch.py
 
-# 3단계: 키보드 제어
+# 수동 제어: 키보드 제어
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
 
