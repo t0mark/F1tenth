@@ -41,6 +41,7 @@ def generate_launch_description():
             'path_resolution': 0.2,
             'lateral_offsets': [0.0, 0.4, -0.4],
             'safety_radius': 0.4,
+            'lookahead_distance': 2.0,
             'base_frame': 'ego_racecar/base_link',
             'map_frame': 'map',
         }]
