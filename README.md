@@ -90,10 +90,7 @@ Pure Pursuit 기반 차량 제어 모듈
 - **출력**: `/drive` (AckermannDriveStamped)
 
 <div align="center">
-  <video width="500" controls>
-    <source src="img/control.webm" type="video/webm">
-    Your browser does not support the video tag.
-  </video>
+  <img src="img/control.gif" alt="Pure Pursuit Control Demo" width="500">
   <p><em>Pure Pursuit 제어 시스템 동작 데모</em></p>
 </div>
 
