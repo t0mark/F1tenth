@@ -79,8 +79,16 @@ F1TENTH 시뮬레이션과 ROS2 연결 브리지
 
 <div align="center">
   <img src="img/global_path.png" alt="Path Planning Visualization" width="250">
-  <p><em>Global Path와 Local Path 시각화 예   시</em></p>
+  <p><em>Global Path와 Local Path 시각화 예시</em></p>
 </div>
+
+### 🎮 [F1TENTH Control](f1tenth_control/)
+Pure Pursuit 기반 차량 제어 모듈
+
+- **실행**: `ros2 launch f1tenth_control pure_pursuit_launch.py`
+- **기능**: Local/Global Path 추종, Pure Pursuit 조향 제어, 고정 속도 제어
+- **입력**: `/local_path`, `/global_path`, `/ego_racecar/odom`
+- **출력**: `/drive` (AckermannDriveStamped)
 
 
 ## 🎮 기본 사용법
@@ -92,6 +100,8 @@ ros2 launch f1tenth_gym_ros gym_bridge_launch.py
 # 2단계: Path Planning
 ros2 launch f1tenth_path_planner path_planner_launch.py
 
+# 3단계: Vehicle Control
+ros2 launch f1tenth_control pure_pursuit_launch.py
 
 # 옵션
 # 인지 모듈: SLAM 실행
@@ -112,5 +122,6 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 | 🏎️ f1tenth_gym_ros | 시뮬레이션 브리지 | [📖 가이드](f1tenth_gym_ros) |
 | 🗺️ f1tenth_slam_toolbox | SLAM 도구 | [📖 가이드](f1tenth_slam_toolbox) |
 | 🧭 f1tenth_path_planner | 경로 계획 | [📖 가이드](f1tenth_path_planner) |
+| 🎮 f1tenth_control | 차량 제어 | [📖 가이드](f1tenth_control) |
 
 </div>
