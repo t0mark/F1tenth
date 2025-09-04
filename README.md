@@ -66,9 +66,10 @@ F1TENTH 시뮬레이션과 ROS2 연결 브리지
 ### 🧭 [F1TENTH Path Planner](f1tenth_path_planner/)
 센터라인 기반 Global Path + LiDAR Local Path (제어 분리, 경로 생성만)
 
-- 실행: `ros2 launch f1tenth_path_planner path_planner_launch.py`
-- 출력: `/global_path`(map 프레임), `/local_path`(map 프레임)
-- 의존성(Python): `opencv-python`, `scikit-image`, `numpy`, `PyYAML`
+- **실행**: `ros2 launch f1tenth_path_planner path_planner_launch.py`
+- **기능**: Global 경로 계획, LiDAR 기반 Local 장애물 회피
+- **출력**: `/global_path` (map 프레임), `/local_path` (map 프레임)
+- **의존성**: opencv-python, scikit-image, numpy, PyYAML
 
 <div align="center">
   <img src="img/slam_dem.png" alt="SLAM Demo Result" width="500">
@@ -98,5 +99,6 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 |--------|------|------|
 | 🏎️ f1tenth_gym_ros | 시뮬레이션 브리지 | [📖 가이드](f1tenth_gym_ros) |
 | 🗺️ f1tenth_slam_toolbox | SLAM 도구 | [📖 가이드](f1tenth_slam_toolbox) |
+| 🧭 f1tenth_path_planner | 경로 계획 | [📖 가이드](f1tenth_path_planner) |
 
 </div>
