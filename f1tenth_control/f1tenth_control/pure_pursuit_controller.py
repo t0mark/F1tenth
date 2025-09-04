@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
 
 import math
-import numpy as np
 
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 
-from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Odometry, Path
 from ackermann_msgs.msg import AckermannDriveStamped
 from tf2_ros import Buffer, TransformListener
-from tf2_geometry_msgs import do_transform_pose
 
 
 class PurePursuitController(Node):
@@ -19,7 +16,8 @@ class PurePursuitController(Node):
     Pure Pursuit Controller for F1TENTH
     - Subscribes to global/local path and odometry
     - Publishes Ackermann drive commands
-    - Uses fixed speed with pure pursuit steering control
+    - Uses local path (priority) and global path (fallback) for steering control
+    - Fixed speed control with pure pursuit steering algorithm
     """
 
     def __init__(self):
@@ -90,6 +88,7 @@ class PurePursuitController(Node):
         self.get_logger().info('Pure Pursuit Controller initialized')
         self.get_logger().info(f'Lookahead distance: {self.lookahead_distance}m')
         self.get_logger().info(f'Fixed speed: {self.speed} m/s')
+        self.get_logger().info('Local path priority enabled for steering control')
 
     def odom_callback(self, msg):
         """Update current vehicle pose from odometry"""
@@ -114,18 +113,19 @@ class PurePursuitController(Node):
         """
         current_time = self.get_clock().now()
         
-        # Temporarily disable local path - use global path only
         # Check if local path is recent and available
-        # if (self.local_path is not None and 
-        #     self.local_path_timestamp is not None and 
-        #     len(self.local_path.poses) > 0):
-        #     
-        #     time_diff = (current_time - self.local_path_timestamp).nanoseconds / 1e9
-        #     if time_diff < self.local_path_timeout:
-        #         return self.local_path
+        if (self.local_path is not None and 
+            self.local_path_timestamp is not None and 
+            len(self.local_path.poses) > 0):
+            
+            time_diff = (current_time - self.local_path_timestamp).nanoseconds / 1e9
+            if time_diff < self.local_path_timeout:
+                # self.get_logger().debug('Using local path for steering control')
+                return self.local_path
         
         # Use global path as fallback
         if self.global_path is not None and len(self.global_path.poses) > 0:
+            # self.get_logger().debug('Using global path as fallback for steering control')
             return self.global_path
             
         return None
@@ -133,7 +133,7 @@ class PurePursuitController(Node):
     def find_target_point(self):
         """
         Find target point on path using lookahead distance
-        Returns target point coordinates or None if not found
+        Returns target point coordinates (target_x, target_y) or None if not found
         """
         path = self.get_current_path()
         if not path or not self.current_pose:
@@ -232,22 +232,23 @@ class PurePursuitController(Node):
 
     def control_loop(self):
         """Main control loop - runs at 50Hz"""
-        if not self.current_pose or not self.get_current_path():
+        current_path = self.get_current_path()
+        if not self.current_pose or not current_path:
             # Stop if no path or pose
             self.publish_drive_command(0.0, 0.0)
             return
         
-        # Find target point
+        # Find target point for steering control
         target_point = self.find_target_point()
         if not target_point:
-            self.get_logger().warn('No target point found, stopping')
+            self.get_logger().warn('No target point found on path, stopping')
             self.publish_drive_command(0.0, 0.0)
             return
         
-        # Calculate steering angle
+        # Calculate steering angle using pure pursuit
         steering_angle = self.pure_pursuit_control(target_point)
         
-        # Publish drive command with fixed speed
+        # Publish drive command with fixed speed and calculated steering
         self.publish_drive_command(self.speed, steering_angle)
 
     def publish_drive_command(self, speed, steering_angle):
