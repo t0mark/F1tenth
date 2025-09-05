@@ -99,6 +99,9 @@ Pure Pursuit 기반 차량 제어 모듈
 ## 🎮 기본 사용법
 
 ```bash
+# 통합 실행
+ros2 launch f1tenth f1tenth_system_launch.py
+
 # 1단계: 시뮬레이션 실행
 ros2 launch f1tenth_gym_ros gym_bridge_launch.py
 
