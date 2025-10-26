@@ -11,7 +11,7 @@ from geometry_msgs.msg import Transform
 from ackermann_msgs.msg import AckermannDriveStamped
 from tf2_ros import TransformBroadcaster
 
-import gym
+import gymnasium as gym
 import numpy as np
 from transforms3d import euler
 
@@ -95,18 +95,18 @@ class GymBridge(Node):
             self.has_opp = False
         
         # TF 브로드캐스터 초기화 및 타이머 설정
-        self.env = gym.make('f110_gym:f110-v0',
-                            map=self.get_parameter('map_path').value,
-                            map_ext=self.get_parameter('map_img_ext').value,
-                            num_agents=self.num_agents)
+        self.env = gym.make(
+            'f110_gym:f110-v0',
+            map=self.get_parameter('map_path').value,
+            map_ext=self.get_parameter('map_img_ext').value,
+            num_agents=self.num_agents)
 
         if self.num_agents == 2:
-            self.obs, _, self.done, _ = self.env.reset(np.array([[sx, sy, stheta], [sx1, sy1, stheta1]]))
-            self.ego_scan = list(self.obs['scans'][0])
-            self.opp_scan = list(self.obs['scans'][1])
+            initial_poses = np.array([[sx, sy, stheta], [sx1, sy1, stheta1]], dtype=float)
         else:
-            self.obs, _, self.done, _ = self.env.reset(np.array([[sx, sy, stheta]]))
-            self.ego_scan = list(self.obs['scans'][0])
+            initial_poses = np.array([[sx, sy, stheta]], dtype=float)
+
+        self._reset_environment(initial_poses)
 
         # TF 브로드캐스터
         self.br = TransformBroadcaster(self)
@@ -191,6 +191,15 @@ class GymBridge(Node):
         else:
             self.ego_steer = 0.0
 
+    def _reset_environment(self, poses):
+        """
+        Gymnasium API helper to reset simulator state while keeping cached scans in sync.
+        """
+        self.obs, _ = self.env.reset(options={'poses': np.asarray(poses, dtype=float)})
+        self.terminated = False
+        self.truncated = False
+        self._update_sim_state()
+
     def ego_reset_callback(self, pose_msg):
         """
         ego 차량 위치 리셋 콜백
@@ -209,9 +218,10 @@ class GymBridge(Node):
         
         if self.has_opp:
             opp_pose = [self.obs['poses_x'][1], self.obs['poses_y'][1], self.obs['poses_theta'][1]]
-            self.obs, _, self.done, _ = self.env.reset(np.array([[rx, ry, rtheta], opp_pose]))
+            poses = np.array([[rx, ry, rtheta], opp_pose], dtype=float)
         else:
-            self.obs, _, self.done, _ = self.env.reset(np.array([[rx, ry, rtheta]]))
+            poses = np.array([[rx, ry, rtheta]], dtype=float)
+        self._reset_environment(poses)
 
     def opp_reset_callback(self, pose_msg):
         """
@@ -228,7 +238,8 @@ class GymBridge(Node):
             rqz = pose_msg.pose.orientation.z
             rqw = pose_msg.pose.orientation.w
             _, _, rtheta = euler.quat2euler([rqw, rqx, rqy, rqz], axes='sxyz')
-            self.obs, _, self.done, _ = self.env.reset(np.array([list(self.ego_pose), [rx, ry, rtheta]]))
+            poses = np.array([list(self.ego_pose), [rx, ry, rtheta]], dtype=float)
+            self._reset_environment(poses)
 
     
     def drive_timer_callback(self):
@@ -239,10 +250,12 @@ class GymBridge(Node):
         - (ego_drive_published 플래그) 최초 명령 수신 전에는 스텝을 진행 X
         """
         if self.ego_drive_published and not self.has_opp:
-            self.obs, _, self.done, _ = self.env.step(np.array([[self.ego_steer, self.ego_requested_speed]]))
+            step_action = np.array([[self.ego_steer, self.ego_requested_speed]], dtype=np.float32)
+            self.obs, _, self.terminated, self.truncated, _ = self.env.step(step_action)
         elif self.ego_drive_published and self.has_opp and self.opp_drive_published:
-            self.obs, _, self.done, _ = self.env.step(np.array([[self.ego_steer, self.ego_requested_speed], 
-                                                                [self.opp_steer, self.opp_requested_speed]]))
+            step_action = np.array([[self.ego_steer, self.ego_requested_speed],
+                                    [self.opp_steer, self.opp_requested_speed]], dtype=np.float32)
+            self.obs, _, self.terminated, self.truncated, _ = self.env.step(step_action)
         self._update_sim_state()
 
     def timer_callback(self):
@@ -271,22 +284,22 @@ class GymBridge(Node):
         - 목적: env.step/reset 결과 -> self.obs (gym 관측 dict) -> 포즈/속도/스캔 버퍼
         - 이 함수는 순수 상태 동기화만 수행
         """
-        self.ego_scan = list(self.obs['scans'][0])
-        self.ego_pose[0] = self.obs['poses_x'][0]
-        self.ego_pose[1] = self.obs['poses_y'][0]
-        self.ego_pose[2] = self.obs['poses_theta'][0]
-        self.ego_speed[0] = self.obs['linear_vels_x'][0]
-        self.ego_speed[1] = self.obs['linear_vels_y'][0]
-        self.ego_speed[2] = self.obs['ang_vels_z'][0]
+        self.ego_scan = self.obs['scans'][0].astype(float).tolist()
+        self.ego_pose[0] = float(self.obs['poses_x'][0])
+        self.ego_pose[1] = float(self.obs['poses_y'][0])
+        self.ego_pose[2] = float(self.obs['poses_theta'][0])
+        self.ego_speed[0] = float(self.obs['linear_vels_x'][0])
+        self.ego_speed[1] = float(self.obs['linear_vels_y'][0])
+        self.ego_speed[2] = float(self.obs['ang_vels_z'][0])
         
         if self.has_opp:
-            self.opp_scan = list(self.obs['scans'][1])
-            self.opp_pose[0] = self.obs['poses_x'][1]
-            self.opp_pose[1] = self.obs['poses_y'][1]
-            self.opp_pose[2] = self.obs['poses_theta'][1]
-            self.opp_speed[0] = self.obs['linear_vels_x'][1]
-            self.opp_speed[1] = self.obs['linear_vels_y'][1]
-            self.opp_speed[2] = self.obs['ang_vels_z'][1]
+            self.opp_scan = self.obs['scans'][1].astype(float).tolist()
+            self.opp_pose[0] = float(self.obs['poses_x'][1])
+            self.opp_pose[1] = float(self.obs['poses_y'][1])
+            self.opp_pose[2] = float(self.obs['poses_theta'][1])
+            self.opp_speed[0] = float(self.obs['linear_vels_x'][1])
+            self.opp_speed[1] = float(self.obs['linear_vels_y'][1])
+            self.opp_speed[2] = float(self.obs['ang_vels_z'][1])
     
     def _publish_laser_scan(self, ts):
         """
