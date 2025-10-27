@@ -2,8 +2,10 @@
 # F1Tenth 시뮬레이션 환경을 ROS2에서 실행하기 위한 모든 노드들을 시작
 
 from launch import LaunchDescription
-from launch_ros.actions import Node 
+from launch_ros.actions import Node
 from launch.substitutions import Command
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
 from ament_index_python.packages import get_package_share_directory
 import os
 import yaml
@@ -11,7 +13,17 @@ import yaml
 def generate_launch_description():
     # 런치 설명 객체 생성
     ld = LaunchDescription()
+
+    # 맵 파일 경로 인자 선언
+    map_path_arg = DeclareLaunchArgument(
+        'map_path',
+        default_value='',
+        description='Path to the map file (without .yaml extension). If empty, uses the map from sim.yaml config file.'
+    )
     
+    # 맵 경로 런치 설정 가져오기
+    map_path_config = LaunchConfiguration('map_path')
+
     # 설정 파일
     ## 경로 구성
     config = os.path.join(
@@ -23,9 +35,36 @@ def generate_launch_description():
     config_dict = yaml.safe_load(open(config, 'r'))
 
     # 상대 차량 존재 여부
-    has_opp = config_dict['bridge']['ros__parameters']['num_agent'] > 1  
+    has_opp = config_dict['bridge']['ros__parameters']['num_agent'] > 1
     # 키보드 조작 여부
     teleop = config_dict['bridge']['ros__parameters']['kb_teleop']
+
+    # 맵 경로 결정 (런치 인자가 제공되면 사용, 아니면 설정 파일 사용)
+    # LaunchConfiguration은 런타임에 평가되므로 직접 비교 불가
+    # 따라서 PythonExpression과 OpaqueFunction 사용 필요
+    from launch.actions import OpaqueFunction
+
+    def setup_map_path(context):
+        # 런치 인자에서 맵 경로 가져오기
+        map_path_arg_value = context.launch_configurations.get('map_path', '')
+
+        # 인자가 비어있으면 설정 파일에서 가져오기
+        if not map_path_arg_value:
+            map_path_final = config_dict['bridge']['ros__parameters']['map_path']
+        else:
+            map_path_final = map_path_arg_value
+
+        return [
+            Node(
+                package='nav2_map_server',
+                executable='map_server',
+                parameters=[{'yaml_filename': map_path_final + '.yaml'},
+                            {'topic': 'map'},
+                            {'frame_id': 'map'},
+                            {'output': 'screen'},
+                            {'use_sim_time': False}]
+            )
+        ]
 
     # 시뮬레이션 브리지 노드 (F1Tenth gym과 ROS2 연결)
     bridge_node = Node(
@@ -42,18 +81,7 @@ def generate_launch_description():
         name='rviz',
         arguments=['-d', os.path.join(get_package_share_directory('f1tenth_gym_ros'), 'launch', 'gym_bridge.rviz')]
     )
-    
-    # 지도 서버 노드 (정적 지도 제공)
-    map_server_node = Node(
-        package='nav2_map_server',
-        executable='map_server',
-        parameters=[{'yaml_filename': config_dict['bridge']['ros__parameters']['map_path'] + '.yaml'},
-                    {'topic': 'map'},
-                    {'frame_id': 'map'},
-                    {'output': 'screen'},
-                    {'use_sim_time': False}]
-    )
-    
+
     # Nav2 라이프사이클 관리자 (지도 서버 생명주기 관리)
     ## Nav2: ROS2용 자율주행 네비게이션 프레임워크 (경로계획, 장애물회피, 위치추정 등을 제공)
     ### 현재 패키지에서는 정적 지도 제공만 (map_server)
@@ -86,17 +114,19 @@ def generate_launch_description():
     )
 
     # 노드들을 런치 설명에 추가
+    ## 맵 경로 인자 추가
+    ld.add_action(map_path_arg)
     ## 시각화
     ld.add_action(rviz_node)
     ## 시뮬레이션 브리지
     ld.add_action(bridge_node)
     ## 라이프사이클 관리
     ld.add_action(nav_lifecycle_node)
-    ## 지도 서버
-    ld.add_action(map_server_node)
+    ## 지도 서버 (OpaqueFunction을 통해 동적으로 생성)
+    ld.add_action(OpaqueFunction(function=setup_map_path))
     ## 자아 차량
     ld.add_action(ego_robot_publisher)
-    
+
     ## 상대 차량이 있는 경우에만 추가
     if has_opp:
         ld.add_action(opp_robot_publisher)
