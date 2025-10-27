@@ -14,6 +14,7 @@ setup(
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
+        (os.path.join('share', package_name, 'data'), glob('data/*')),
     ],
     install_requires=[
         'setuptools',
@@ -30,6 +31,7 @@ setup(
             'global_centerline_node = f1tenth_path_planner.global_centerline_node:main',
             'local_avoidance_node = f1tenth_path_planner.local_avoidance_node:main',
             'extract_centerline = f1tenth_path_planner.utils:extract_centerline_cli',
+            'checkpoint_recorder_node = f1tenth_path_planner.checkpoint_recorder_node:main',
         ],
     },
 )
