@@ -10,20 +10,22 @@ F1TENTH 자율주행 레이싱을 위한 ROS2 시뮬레이션 환경입니다.
 
 ## 🔧 의존성 설치
 
-### Python 패키지
 ```bash
+# Git 리포지토리: f1tenth_gym_ros 브리지를 워크스페이스에 추가
+cd ~/sim_ws/src
+git clone https://github.com/t0mark/f1tenth_gym_ros.git
+
+# Python 패키지 의존성
 pip3 install setuptools==59.6.0 testresources wheel numpy matplotlib pyyaml \
   gymnasium pybullet-utils transforms3d
-```
 
-### 시스템 패키지
-```bash
-sudo apt-get update && sudo apt-get install python3-dev build-essential
-```
+# 시스템 패키지 의존성
+sudo apt-get update
+sudo apt-get install -y python3-dev build-essential
 
-### ROS2 패키지
-```bash
-sudo apt update && sudo apt install \
+# ROS2 패키지 의존성
+sudo apt update
+sudo apt install -y \
   ros-foxy-joint-state-publisher ros-foxy-joint-state-publisher-gui \
   ros-foxy-robot-state-publisher ros-foxy-xacro \
   ros-foxy-navigation2 ros-foxy-nav2-bringup \

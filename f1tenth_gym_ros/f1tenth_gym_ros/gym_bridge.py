@@ -11,6 +11,7 @@ from geometry_msgs.msg import Transform
 from ackermann_msgs.msg import AckermannDriveStamped
 from tf2_ros import TransformBroadcaster
 
+from pathlib import Path
 import gymnasium as gym
 import numpy as np
 from transforms3d import euler
@@ -26,30 +27,38 @@ class GymBridge(Node):
     def __init__(self):
         super().__init__('gym_bridge')
         
-        # 파라미터 선언
-        self.declare_parameter('ego_namespace')
-        self.declare_parameter('ego_odom_topic')
-        self.declare_parameter('ego_opp_odom_topic')
-        self.declare_parameter('ego_scan_topic')
-        self.declare_parameter('ego_drive_topic')
-        self.declare_parameter('opp_namespace')
-        self.declare_parameter('opp_odom_topic')
-        self.declare_parameter('opp_ego_odom_topic')
-        self.declare_parameter('opp_scan_topic')
-        self.declare_parameter('opp_drive_topic')
-        self.declare_parameter('scan_distance_to_base_link')
-        self.declare_parameter('scan_fov')
-        self.declare_parameter('scan_beams')
-        self.declare_parameter('map_path')
-        self.declare_parameter('map_img_ext')
-        self.declare_parameter('num_agent')
-        self.declare_parameter('sx')
-        self.declare_parameter('sy')
-        self.declare_parameter('stheta')
-        self.declare_parameter('sx1')
-        self.declare_parameter('sy1')
-        self.declare_parameter('stheta1')
-        self.declare_parameter('kb_teleop')
+        package_root = Path(__file__).resolve().parents[1]
+        default_map_prefix = str(package_root / 'maps' / 'Spielberg_map')
+
+        default_params = {
+            'ego_namespace': 'ego_racecar',
+            'ego_odom_topic': 'odom',
+            'ego_opp_odom_topic': 'opp_odom',
+            'ego_scan_topic': 'scan',
+            'ego_drive_topic': 'drive',
+            'opp_namespace': 'opp_racecar',
+            'opp_odom_topic': 'odom',
+            'opp_ego_odom_topic': 'opp_odom',
+            'opp_scan_topic': 'opp_scan',
+            'opp_drive_topic': 'opp_drive',
+            'scan_distance_to_base_link': 0.0,
+            'scan_fov': 4.7,
+            'scan_beams': 1080,
+            'map_path': default_map_prefix,
+            'map_img_ext': '.png',
+            'num_agent': 1,
+            'sx': 0.0,
+            'sy': 0.0,
+            'stheta': 0.0,
+            'sx1': 2.0,
+            'sy1': 0.5,
+            'stheta1': 0.0,
+            'kb_teleop': True,
+        }
+
+        for name, default in default_params.items():
+            self.declare_parameter(name, default)
+
         self.num_agents = self.get_parameter('num_agent').value
 
         # 유효성 검사
