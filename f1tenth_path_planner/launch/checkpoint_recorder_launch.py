@@ -14,14 +14,13 @@ def generate_launch_description():
     auto_save = ParameterValue(LaunchConfiguration('auto_save_on_add'), value_type=bool)
     map_frame = LaunchConfiguration('map_frame')
     publish_topic = LaunchConfiguration('publish_topic')
-    map_yaml = LaunchConfiguration('map_yaml')
     map_path = LaunchConfiguration('map_path')
 
     gym_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([FindPackageShare('f1tenth_gym_ros'), 'launch', 'gym_bridge_launch.py'])
         ),
-        launch_arguments={'map_yaml': map_yaml, 'map_path': map_path}.items()
+        launch_arguments={'map_path': map_path}.items()
     )
 
     return LaunchDescription([
@@ -43,12 +42,8 @@ def generate_launch_description():
             description='Topic name to publish Path visualization'),
         DeclareLaunchArgument(
             'map_path',
-            default_value=PathJoinSubstitution([FindPackageShare('f1tenth_gym_ros'), 'maps', 'Spielberg_map']),
-            description='Map image root to pass to gym bridge (without extension)'),
-        DeclareLaunchArgument(
-            'map_yaml',
             default_value='',
-            description='Map YAML file to pass to gym bridge'),
+            description='Path to the map YAML file (with .yaml extension). If empty, uses the map from gym bridge sim.yaml config file.'),
         gym_launch,
         Node(
             package='f1tenth_path_planner',

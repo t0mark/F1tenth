@@ -14,11 +14,11 @@ def generate_launch_description():
     # 런치 설명 객체 생성
     ld = LaunchDescription()
 
-    # 맵 파일 경로 인자 선언
+    # 맵 YAML 파일 경로 인자 선언
     map_path_arg = DeclareLaunchArgument(
         'map_path',
         default_value='',
-        description='Path to the map file (without .yaml extension). If empty, uses the map from sim.yaml config file.'
+        description='Path to the map YAML file (with .yaml extension). If empty, uses the map from sim.yaml config file.'
     )
     
     # 맵 경로 런치 설정 가져오기
@@ -48,17 +48,18 @@ def generate_launch_description():
         # 런치 인자에서 맵 경로 가져오기
         map_path_arg_value = context.launch_configurations.get('map_path', '')
 
-        # 인자가 비어있으면 설정 파일에서 가져오기
+        # 인자가 비어있으면 설정 파일에서 가져오기 (기본값에 .yaml 추가)
         if not map_path_arg_value:
-            map_path_final = config_dict['bridge']['ros__parameters']['map_path']
+            map_path_final = config_dict['bridge']['ros__parameters']['map_path'] + '.yaml'
         else:
+            # 인자로 받은 경로는 .yaml 확장자 포함
             map_path_final = map_path_arg_value
 
         return [
             Node(
                 package='nav2_map_server',
                 executable='map_server',
-                parameters=[{'yaml_filename': map_path_final + '.yaml'},
+                parameters=[{'yaml_filename': map_path_final},
                             {'topic': 'map'},
                             {'frame_id': 'map'},
                             {'output': 'screen'},
