@@ -10,13 +10,13 @@ def generate_launch_description():
     # Launch arguments
     lookahead_distance_arg = DeclareLaunchArgument(
         'lookahead_distance',
-        default_value='2.5',
+        default_value='1.0',
         description='Lookahead distance for pure pursuit algorithm (meters)'
     )
     
     speed_arg = DeclareLaunchArgument(
         'speed',
-        default_value='2.0',
+        default_value='1.2',
         description='Fixed speed for the vehicle (m/s)'
     )
     
@@ -28,7 +28,7 @@ def generate_launch_description():
     
     max_steering_angle_arg = DeclareLaunchArgument(
         'max_steering_angle',
-        default_value='0.4189',
+        default_value='2.4',
         description='Maximum steering angle (radians, ~24 degrees)'
     )
     
