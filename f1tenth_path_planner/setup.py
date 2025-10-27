@@ -15,7 +15,11 @@ setup(
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
     ],
-    install_requires=['setuptools'],
+    install_requires=[
+        'setuptools',
+        'numpy>=1.21,<1.24',
+        'scikit-image>=0.18,<0.22',
+    ],
     zip_safe=True,
     maintainer='tomark',
     maintainer_email='tomark@example.com',
@@ -29,4 +33,3 @@ setup(
         ],
     },
 )
-

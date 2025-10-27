@@ -17,6 +17,7 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>python3-skimage</exec_depend>
 
   <!-- Python libs (pip) required by nodes) -->
   <!-- Ensure these are installed in your environment: opencv-python, scikit-image, pyyaml, numpy -->
