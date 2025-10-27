@@ -27,6 +27,8 @@ setup(
         (os.path.join('share', package_name, 'launch'), glob('launch/*.rviz')),
         # 설정 파일들 (매개변수 등)
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
+        # 맵 파일들 (.yaml, .png 등)
+        (os.path.join('share', package_name, 'maps'), glob('maps/*')),
     ],
     # 설치 시 필요한 의존성
     install_requires=['setuptools'],

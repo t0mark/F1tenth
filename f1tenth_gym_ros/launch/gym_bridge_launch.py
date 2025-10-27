@@ -44,36 +44,40 @@ def generate_launch_description():
     # 따라서 PythonExpression과 OpaqueFunction 사용 필요
     from launch.actions import OpaqueFunction
 
-    def setup_map_path(context):
+    def setup_nodes_with_map(context):
         # 런치 인자에서 맵 경로 가져오기
         map_path_arg_value = context.launch_configurations.get('map_path', '')
 
-        # 인자가 비어있으면 설정 파일에서 가져오기 (기본값에 .yaml 추가)
+        # 인자가 비어있으면 설정 파일에서 가져오기
         if not map_path_arg_value:
-            map_path_final = config_dict['bridge']['ros__parameters']['map_path'] + '.yaml'
+            map_path_yaml = config_dict['bridge']['ros__parameters']['map_path'] + '.yaml'
+            map_path_base = config_dict['bridge']['ros__parameters']['map_path']
         else:
             # 인자로 받은 경로는 .yaml 확장자 포함
-            map_path_final = map_path_arg_value
+            map_path_yaml = map_path_arg_value
+            # .yaml 확장자 제거하여 베이스 경로 추출
+            map_path_base = map_path_arg_value.replace('.yaml', '')
 
-        return [
-            Node(
-                package='nav2_map_server',
-                executable='map_server',
-                parameters=[{'yaml_filename': map_path_final},
-                            {'topic': 'map'},
-                            {'frame_id': 'map'},
-                            {'output': 'screen'},
-                            {'use_sim_time': False}]
-            )
-        ]
+        # gym_bridge 노드 - 맵 경로 파라미터 오버라이드
+        bridge_node = Node(
+            package='f1tenth_gym_ros',
+            executable='gym_bridge',
+            name='bridge',
+            parameters=[config, {'map_path': map_path_base}]
+        )
 
-    # 시뮬레이션 브리지 노드 (F1Tenth gym과 ROS2 연결)
-    bridge_node = Node(
-        package='f1tenth_gym_ros',
-        executable='gym_bridge',
-        name='bridge',
-        parameters=[config]
-    )
+        # map_server 노드
+        map_server_node = Node(
+            package='nav2_map_server',
+            executable='map_server',
+            parameters=[{'yaml_filename': map_path_yaml},
+                        {'topic': 'map'},
+                        {'frame_id': 'map'},
+                        {'output': 'screen'},
+                        {'use_sim_time': False}]
+        )
+
+        return [bridge_node, map_server_node]
     
     # RViz 시각화 노드
     rviz_node = Node(
@@ -119,12 +123,10 @@ def generate_launch_description():
     ld.add_action(map_path_arg)
     ## 시각화
     ld.add_action(rviz_node)
-    ## 시뮬레이션 브리지
-    ld.add_action(bridge_node)
+    ## 시뮬레이션 브리지 및 지도 서버 (OpaqueFunction을 통해 동적으로 생성)
+    ld.add_action(OpaqueFunction(function=setup_nodes_with_map))
     ## 라이프사이클 관리
     ld.add_action(nav_lifecycle_node)
-    ## 지도 서버 (OpaqueFunction을 통해 동적으로 생성)
-    ld.add_action(OpaqueFunction(function=setup_map_path))
     ## 자아 차량
     ld.add_action(ego_robot_publisher)
 

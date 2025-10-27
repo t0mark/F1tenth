@@ -29,6 +29,7 @@ setup(
     entry_points={
         'console_scripts': [
             'global_centerline_node = f1tenth_path_planner.global_centerline_node:main',
+            'global_checkpoint_node = f1tenth_path_planner.global_checkpoint_node:main',
             'local_avoidance_node = f1tenth_path_planner.local_avoidance_node:main',
             'extract_centerline = f1tenth_path_planner.utils:extract_centerline_cli',
             'checkpoint_recorder_node = f1tenth_path_planner.checkpoint_recorder_node:main',
