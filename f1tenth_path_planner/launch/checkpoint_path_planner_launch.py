@@ -30,11 +30,11 @@ def generate_launch_description():
         parameters=[{
             'global_path_topic': '/global_path',
             'scan_topic': '/scan',  # or '/scan_fixed' if using SLAM fix node
-            'local_horizon': 8.0,
-            'path_resolution': 0.2,
-            'lateral_offsets': [0.0, 0.4, -0.4],
-            'safety_radius': 0.4,
-            'lookahead_distance': 2.0,
+            'local_horizon': 10.0,  # 증가: 더 넓은 시야 (8.0 → 10.0)
+            'path_resolution': 0.15,  # 감소: 더 세밀한 경로 (0.2 → 0.15)
+            'lateral_offsets': [0.0, 0.3, -0.3, 0.5, -0.5],  # 더 많은 회피 옵션
+            'safety_radius': 0.5,  # 증가: 더 큰 안전 반경 (0.4 → 0.5)
+            'lookahead_distance': 2.5,  # 증가: 더 여유있는 lookahead (2.0 → 2.5)
             'base_frame': 'ego_racecar/base_link',
             'map_frame': 'map',
         }]

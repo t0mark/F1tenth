@@ -45,6 +45,7 @@ def generate_launch_description():
     )
 
     # Pure Pursuit Control Launch (차량 제어) - 4초 지연
+    # 조향각에 따른 적응형 속도 제어로 회전 시 감속 (디폴트 값 사용)
     control_launch = TimerAction(
         period=4.0,
         actions=[
