@@ -2,17 +2,14 @@
 
 F1TENTH 자율주행을 위한 경로 계획 패키지입니다. Global 경로 계획과 LiDAR 기반 Local 장애물 회피를 담당합니다.
 
-## 📋 개요
-
-이 패키지는 두 가지 주요 노드로 구성되어 있습니다:
-- **Global Centerline Node**: 맵의 센터라인을 따라 전역 경로를 생성
-- **Local Avoidance Node**: LiDAR 데이터를 활용한 실시간 장애물 회피 경로 생성
-
 ## 🚀 실행
 
 ```bash
 # Path Planner 실행
 ros2 launch f1tenth_path_planner path_planner_launch.py
+
+# 체크포인트 기록 + 시뮬레이터(gym_bridge) 동시 실행
+ros2 launch f1tenth_path_planner checkpoint_recorder_launch.py
 ```
 
 ## 🔧 노드 구성
@@ -41,11 +38,30 @@ ros2 launch f1tenth_path_planner path_planner_launch.py
 - `base_frame` (string): 로봇 베이스 프레임 (기본값 `ego_racecar/base_link`)
 - `map_frame` (string): 맵 프레임 (기본값 `map`)
 
+### `checkpoint_recorder_node`
+RViz의 Publish Point로 입력된 좌표를 순서대로 기록하고, 누적 경로를 CSV 및 Path 토픽으로 제공합니다.
+
+**파라미터:**
+- `map_frame` (string): 경로를 표현할 기준 프레임 (기본값 `map`)
+- `output_csv_path` (string): 저장할 CSV 파일 경로 (기본값 `f1tenth_path_planner/data/checkpoints.csv`)
+- `auto_save_on_add` (bool): 체크포인트 추가 시마다 자동 저장 여부 (기본값 `true`)
+- `publish_topic` (string): 기록된 경로를 퍼블리시할 토픽 (기본값 `/checkpoint_path`)
+- `clicked_point_topic` (string): RViz Publish Point 토픽 (기본값 `/clicked_point`)
+
+**서비스:**
+- `/save_checkpoints` (`std_srvs/Trigger`): 누적된 체크포인트를 CSV로 재저장
+- `/clear_checkpoints` (`std_srvs/Trigger`): 저장된 체크포인트 초기화
+
+**Launch 인자:**
+- `map_path`: `gym_bridge_launch.py`에 전달할 지도 이미지 루트 경로 (기본값 Spielberg 트랙)
+- `map_yaml`: 지도 YAML 파일 경로 (값을 지정하면 `map_path`도 동일 루트로 자동 맞춤, 미지정 시 `map_path + '.yaml'`)
+
 ## 📤📥 토픽
 
 **발행:**
 - `/global_path` (`nav_msgs/Path`, 프레임 `map`) - 전역 센터라인 경로
 - `/local_path` (`nav_msgs/Path`, 프레임 `map`) - 지역 장애물 회피 경로
+- `/checkpoint_path` (`nav_msgs/Path`, 프레임 `map`) - 기록된 체크포인트 시각화 경로
 
 **구독:**
 - `/scan` (`sensor_msgs/LaserScan`) 또는 `/scan_fixed` - LiDAR 센서 데이터
@@ -53,7 +69,7 @@ ros2 launch f1tenth_path_planner path_planner_launch.py
 ## 🔧 의존성
 
 **ROS2 패키지:**
-- `rclpy`, `geometry_msgs`, `nav_msgs`, `sensor_msgs`, `tf2_ros`
+- `rclpy`, `geometry_msgs`, `nav_msgs`, `sensor_msgs`, `tf2_ros`, `std_srvs`
 
 **Python 패키지:**
 ```bash
@@ -68,9 +84,11 @@ f1tenth_path_planner/
 │   ├── __init__.py
 │   ├── global_centerline_node.py    # 전역 경로 계획 노드
 │   ├── local_avoidance_node.py      # 지역 장애물 회피 노드
+│   ├── checkpoint_recorder_node.py  # 체크포인트 CSV 기록 노드
 │   └── utils.py                     # 유틸리티 함수
 ├── launch/
-│   └── path_planner_launch.py       # 런치 파일
+│   ├── path_planner_launch.py       # 글로벌+로컬 런치
+│   └── checkpoint_recorder_launch.py # 체크포인트 기록 런치
 ├── package.xml
 ├── setup.py
 ├── setup.cfg
@@ -110,18 +128,21 @@ f1tenth_path_planner/
 ## 📝 사용 예시
 
 ```bash
-# 1. 시뮬레이션 실행
-ros2 launch f1tenth_gym_ros gym_bridge_launch.py
-
-# 2. Path Planner 실행  
+# 1. Path Planner 실행 (선택사항)
 ros2 launch f1tenth_path_planner path_planner_launch.py
 
-# 3. 토픽 확인
+# 2. 토픽 확인
 ros2 topic echo /global_path
 ros2 topic echo /local_path
 
-# 4. RViz로 시각화
+# 3. RViz로 시각화
 rviz2
+
+# 4. 체크포인트 기록 + 시뮬레이터 동시 실행
+ros2 launch f1tenth_path_planner checkpoint_recorder_launch.py
+#    다른 지도를 쓰려면 map_path / map_yaml 인자를 지정하세요.
+#    예) ros2 launch f1tenth_path_planner checkpoint_recorder_launch.py \
+#         map_path:=/workspace/maps/my_track map_yaml:=/workspace/maps/my_track.yaml
 ```
 
 ## ⚠️ 중요 사항
@@ -135,4 +156,3 @@ rviz2
 
 - [f1tenth_gym_ros](../f1tenth_gym_ros/): 시뮬레이션 환경
 - [f1tenth_slam_toolbox](../f1tenth_slam_toolbox/): SLAM 및 지도 생성
-
