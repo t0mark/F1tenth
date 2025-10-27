@@ -25,7 +25,7 @@ class PurePursuitController(Node):
         
         # Parameters
         self.declare_parameter('lookahead_distance', 2.5)  # meters (increased for better cornering)
-        self.declare_parameter('speed', 2.0)  # m/s (fixed speed)
+        self.declare_parameter('speed', 0.3)  # m/s (fixed speed)
         self.declare_parameter('wheelbase', 0.3302)  # meters (F1TENTH wheelbase)
         self.declare_parameter('max_steering_angle', 0.4189)  # radians (~24 degrees)
         self.declare_parameter('path_topic', '/local_path')  # prefer local over global
