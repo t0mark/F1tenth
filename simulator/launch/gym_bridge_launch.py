@@ -27,7 +27,7 @@ def generate_launch_description():
     # 설정 파일
     ## 경로 구성
     config = os.path.join(
-        get_package_share_directory('f1tenth_gym_ros'),
+        get_package_share_directory('simulator'),
         'config',
         'sim.yaml'
         )
@@ -60,7 +60,7 @@ def generate_launch_description():
 
         # gym_bridge 노드 - 맵 경로 파라미터 오버라이드
         bridge_node = Node(
-            package='f1tenth_gym_ros',
+            package='simulator',
             executable='gym_bridge',
             name='bridge',
             parameters=[config, {'map_path': map_path_base}]
@@ -84,7 +84,7 @@ def generate_launch_description():
         package='rviz2',
         executable='rviz2',
         name='rviz',
-        arguments=['-d', os.path.join(get_package_share_directory('f1tenth_gym_ros'), 'launch', 'gym_bridge.rviz')]
+        arguments=['-d', os.path.join(get_package_share_directory('simulator'), 'launch', 'gym_bridge.rviz')]
     )
 
     # Nav2 라이프사이클 관리자 (지도 서버 생명주기 관리)
@@ -105,7 +105,7 @@ def generate_launch_description():
         package='robot_state_publisher',
         executable='robot_state_publisher',
         name='ego_robot_state_publisher',
-        parameters=[{'robot_description': Command(['xacro ', os.path.join(get_package_share_directory('f1tenth_gym_ros'), 'launch', 'ego_racecar.xacro')])}],
+        parameters=[{'robot_description': Command(['xacro ', os.path.join(get_package_share_directory('simulator'), 'launch', 'ego_racecar.xacro')])}],
         remappings=[('/robot_description', 'ego_robot_description')]
     )
     
@@ -114,7 +114,7 @@ def generate_launch_description():
         package='robot_state_publisher',
         executable='robot_state_publisher',
         name='opp_robot_state_publisher',
-        parameters=[{'robot_description': Command(['xacro ', os.path.join(get_package_share_directory('f1tenth_gym_ros'), 'launch', 'opp_racecar.xacro')])}],
+        parameters=[{'robot_description': Command(['xacro ', os.path.join(get_package_share_directory('simulator'), 'launch', 'opp_racecar.xacro')])}],
         remappings=[('/robot_description', 'opp_robot_description')]
     )
 
