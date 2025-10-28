@@ -2,10 +2,10 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <!-- 패키지 기본 정보 -->
-  <name>f1tenth_gym_ros</name>
+  <name>simulator</name>
   <version>0.0.0</version>
-  <description>Bridge for using f1tenth_gym in ROS2</description>
-  <maintainer email="billyzheng.bz@gmail.com">Billy Zheng</maintainer>  
+  <description>F1TENTH Simulation Environment Bridge for ROS2</description>
+  <maintainer email="billyzheng.bz@gmail.com">Billy Zheng</maintainer>
   <license>MIT</license>
 
   <!-- 실행 의존성 (런타임에 필요한 패키지들) -->
