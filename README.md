@@ -33,7 +33,13 @@ cd f1tenth_gym && pip install -e .
 pip install numpy scikit-image opencv-python PyYAML gymnasium transforms3d
 ```
 
-### 3. ROS2 패키지 빌드
+### 3. RealSense 카메라 (실제 로봇용)
+```bash
+sudo apt install ros-humble-librealsense2*
+sudo apt install ros-humble-realsense2-*
+```
+
+### 4. ROS2 패키지 빌드
 ```bash
 cd ~/f1_ws
 source /opt/ros/humble/setup.bash
@@ -45,7 +51,19 @@ source install/setup.bash
 
 ## 🚀 빠른 시작
 
-### 통합 시스템 실행
+### 실제 로봇 연결
+```bash
+# F1TENTH 로봇 연결 (VESC, 센서 등)
+ros2 launch f1tenth_stack bringup_launch.py
+
+# RealSense 카메라 실행
+ros2 launch realsense2_camera rs_launch.py \
+  enable_gyro:=true \
+  enable_accel:=true \
+  unite_imu_method:=1
+```
+
+### 시뮬레이션 - 통합 시스템 실행
 ```bash
 # 중심선 기반 경로 + 장애물 회피 + 제어
 ros2 launch path_planner path_planner_launch.py \
@@ -54,7 +72,7 @@ ros2 launch path_planner path_planner_launch.py \
   is_integrated:=false
 ```
 
-### 개별 패키지 실행
+### 시뮬레이션 - 개별 패키지 실행
 ```bash
 # 1. 시뮬레이터
 ros2 launch simulator gym_bridge_launch.py
