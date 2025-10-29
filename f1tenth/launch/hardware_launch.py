@@ -26,7 +26,14 @@ def generate_launch_description():
                 'launch',
                 'bringup_launch.py'
             ])
-        ])
+        ]),
+        launch_arguments={
+            'vesc_config': PathJoinSubstitution([
+                FindPackageShare('f1tenth'),
+                'config',
+                'vesc_no_servo.yaml'
+            ])
+        }.items()
     )
 
     # # Static TF: base_link -> camera_gyro_frame (same as laser position)
