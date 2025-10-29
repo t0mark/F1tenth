@@ -48,15 +48,30 @@ def generate_launch_description():
         # 런치 인자에서 맵 경로 가져오기
         map_path_arg_value = context.launch_configurations.get('map_path', '')
 
+        # 패키지 공유 디렉토리 경로
+        pkg_share_dir = get_package_share_directory('simulator')
+
         # 인자가 비어있으면 설정 파일에서 가져오기
         if not map_path_arg_value:
-            map_path_yaml = config_dict['bridge']['ros__parameters']['map_path'] + '.yaml'
-            map_path_base = config_dict['bridge']['ros__parameters']['map_path']
+            # 설정 파일에서 맵 이름만 가져옴 (예: 'Spielberg_map', 'track')
+            map_name = config_dict['bridge']['ros__parameters']['map_path']
+            map_img_ext = config_dict['bridge']['ros__parameters']['map_img_ext']
+
+            # 패키지 상대 경로로 맵 파일 경로 구성
+            # map_server용 경로 (YAML 파일)
+            map_path_yaml = os.path.join(pkg_share_dir, 'config', 'maps', map_name + '.yaml')
+            # gym_bridge용 경로 (YAML 파일, 확장자 제외)
+            map_path_base = os.path.join(pkg_share_dir, 'config', 'maps', map_name)
         else:
-            # 인자로 받은 경로는 .yaml 확장자 포함
-            map_path_yaml = map_path_arg_value
-            # .yaml 확장자 제거하여 베이스 경로 추출
-            map_path_base = map_path_arg_value.replace('.yaml', '')
+            # 인자로 받은 경로가 절대 경로인 경우 그대로 사용
+            if os.path.isabs(map_path_arg_value):
+                map_path_yaml = map_path_arg_value
+                map_path_base = map_path_arg_value.replace('.yaml', '')
+            else:
+                # 상대 경로인 경우 패키지 경로 기준으로 해석
+                map_name = map_path_arg_value.replace('.yaml', '')
+                map_path_yaml = os.path.join(pkg_share_dir, 'config', 'maps', map_name + '.yaml')
+                map_path_base = os.path.join(pkg_share_dir, 'config', 'maps', map_name)
 
         # gym_bridge 노드 - 맵 경로 파라미터 오버라이드
         bridge_node = Node(
@@ -84,7 +99,7 @@ def generate_launch_description():
         package='rviz2',
         executable='rviz2',
         name='rviz',
-        arguments=['-d', os.path.join(get_package_share_directory('simulator'), 'launch', 'gym_bridge.rviz')]
+        arguments=['-d', os.path.join(get_package_share_directory('simulator'), 'rviz', 'gym_bridge.rviz')]
     )
 
     # Nav2 라이프사이클 관리자 (지도 서버 생명주기 관리)
@@ -105,7 +120,7 @@ def generate_launch_description():
         package='robot_state_publisher',
         executable='robot_state_publisher',
         name='ego_robot_state_publisher',
-        parameters=[{'robot_description': Command(['xacro ', os.path.join(get_package_share_directory('simulator'), 'launch', 'ego_racecar.xacro')])}],
+        parameters=[{'robot_description': Command(['xacro ', os.path.join(get_package_share_directory('simulator'), 'urdf', 'ego_racecar.xacro')])}],
         remappings=[('/robot_description', 'ego_robot_description')]
     )
     
@@ -114,7 +129,7 @@ def generate_launch_description():
         package='robot_state_publisher',
         executable='robot_state_publisher',
         name='opp_robot_state_publisher',
-        parameters=[{'robot_description': Command(['xacro ', os.path.join(get_package_share_directory('simulator'), 'launch', 'opp_racecar.xacro')])}],
+        parameters=[{'robot_description': Command(['xacro ', os.path.join(get_package_share_directory('simulator'), 'urdf', 'opp_racecar.xacro')])}],
         remappings=[('/robot_description', 'opp_robot_description')]
     )
 
