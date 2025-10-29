@@ -28,15 +28,13 @@ git clone https://github.com/f1tenth/f1tenth_gym.git
 cd f1tenth_gym && pip install -e .
 ```
 
-### 2. Python 라이브러리
+### 의존성
 ```bash
 pip install numpy scikit-image opencv-python PyYAML gymnasium transforms3d
-```
 
-### 3. RealSense 카메라 (실제 로봇용)
-```bash
 sudo apt install ros-humble-librealsense2*
 sudo apt install ros-humble-realsense2-*
+sudo apt install ros-humble-cartographer ros-humble-cartographer-ros
 ```
 
 ### 4. ROS2 패키지 빌드
