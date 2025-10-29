@@ -52,7 +52,7 @@ def generate_launch_description():
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     PathJoinSubstitution([
-                        FindPackageShare('f1tenth_control'),
+                        FindPackageShare('control'),
                         'launch',
                         'pure_pursuit_launch.py'
                     ])

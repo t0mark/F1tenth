@@ -2,7 +2,7 @@ from setuptools import setup
 import os
 from glob import glob
 
-package_name = 'f1tenth_control'
+package_name = 'control'
 
 setup(
     name=package_name,
@@ -21,7 +21,7 @@ setup(
     license='MIT',
     entry_points={
         'console_scripts': [
-            'pure_pursuit_controller = f1tenth_control.pure_pursuit_controller:main',
+            'pure_pursuit = control.pure_pursuit:main',
         ],
     },
 )

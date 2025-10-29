@@ -3,12 +3,12 @@ from setuptools import setup
 import os
 from glob import glob
 
-package_name = 'f1tenth_path_planner'
+package_name = 'path_planner'
 
 setup(
     name=package_name,
     version='0.1.0',
-    packages=[package_name],
+    packages=[package_name, package_name + '.utils'],
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
@@ -28,11 +28,11 @@ setup(
     license='MIT',
     entry_points={
         'console_scripts': [
-            'global_centerline_node = f1tenth_path_planner.global_centerline_node:main',
-            'global_checkpoint_node = f1tenth_path_planner.global_checkpoint_node:main',
-            'local_avoidance_node = f1tenth_path_planner.local_avoidance_node:main',
-            'extract_centerline = f1tenth_path_planner.utils:extract_centerline_cli',
-            'checkpoint_recorder_node = f1tenth_path_planner.checkpoint_recorder_node:main',
+            'global_centerline_node = path_planner.global_centerline:main',
+            'global_checkpoint_node = path_planner.global_checkpoint:main',
+            'local_avoidance_node = path_planner.local_avoidance:main',
+            'extract_centerline = path_planner.utils.utils:extract_centerline_cli',
+            'checkpoint_recorder_node = path_planner.utils.checkpoint_recorder:main',
         ],
     },
 )

@@ -9,7 +9,7 @@ from builtin_interfaces.msg import Time
 from ament_index_python.packages import get_package_share_directory
 import yaml
 
-from .utils import extract_centerline_image, order_skeleton_points, load_map_info, downsample_loop
+from .utils.utils import extract_centerline_image, order_skeleton_points, load_map_info, downsample_loop
 
 
 class GlobalCenterlineNode(Node):
