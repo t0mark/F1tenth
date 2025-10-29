@@ -6,12 +6,12 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     # Get workspace root from COLCON_PREFIX_PATH or assume standard structure
-    ws_root = os.environ.get('COLCON_PREFIX_PATH', '/home/tomark/sim_ws/install').split(':')[0]
+    ws_root = os.environ.get('COLCON_PREFIX_PATH', '/home/tomark/f1_ws/install').split(':')[0]
     ws_root = os.path.dirname(ws_root)  # Remove 'install' to get workspace root
-    default_csv_path = os.path.join(ws_root, 'src', 'f1tenth_path_planner', 'data', 'checkpoints.csv')
+    default_csv_path = os.path.join(ws_root, 'src', 'path_planner', 'data', 'checkpoints.csv')
 
     global_node = Node(
-        package='f1tenth_path_planner',
+        package='path_planner',
         executable='global_checkpoint_node',
         name='global_checkpoint_node',
         output='screen',
@@ -23,7 +23,7 @@ def generate_launch_description():
     )
 
     local_node = Node(
-        package='f1tenth_path_planner',
+        package='path_planner',
         executable='local_avoidance_node',
         name='local_avoidance_node',
         output='screen',

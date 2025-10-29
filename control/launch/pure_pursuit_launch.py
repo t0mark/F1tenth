@@ -58,8 +58,8 @@ def generate_launch_description():
 
     # Pure Pursuit Controller Node
     pure_pursuit_node = Node(
-        package='f1tenth_control',
-        executable='pure_pursuit_controller',
+        package='control',
+        executable='pure_pursuit',
         name='pure_pursuit_controller',
         parameters=[{
             'lookahead_distance': LaunchConfiguration('lookahead_distance'),

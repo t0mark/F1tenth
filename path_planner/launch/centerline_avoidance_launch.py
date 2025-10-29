@@ -7,22 +7,26 @@ import yaml
 
 
 def generate_launch_description():
-    # Attempt to read f1tenth_gym_ros sim.yaml to reuse map_path/map_img_ext
+    # Attempt to read simulator sim.yaml to reuse map_path/map_img_ext
     params = {}
     try:
-        fgr = get_package_share_directory('f1tenth_gym_ros')
-        sim_yaml = os.path.join(fgr, 'config', 'sim.yaml')
+        pkg_share = get_package_share_directory('simulator')
+        sim_yaml = os.path.join(pkg_share, 'config', 'sim.yaml')
         with open(sim_yaml, 'r') as f:
             cfg = yaml.safe_load(f)
         bridge = cfg['bridge']['ros__parameters']
-        params['map_path'] = bridge['map_path']
-        params['map_img_ext'] = bridge['map_img_ext']
-        params['map_yaml_path'] = bridge['map_path'] + '.yaml'
+        map_name = bridge['map_path']
+        map_img_ext = bridge['map_img_ext']
+
+        # Map files are now in config/maps/
+        params['map_path'] = os.path.join(pkg_share, 'config', 'maps', map_name)
+        params['map_img_ext'] = map_img_ext
+        params['map_yaml_path'] = os.path.join(pkg_share, 'config', 'maps', map_name + '.yaml')
     except Exception:
         pass
 
     global_node = Node(
-        package='f1tenth_path_planner',
+        package='path_planner',
         executable='global_centerline_node',
         name='global_centerline_node',
         output='screen',
@@ -30,7 +34,7 @@ def generate_launch_description():
     )
 
     local_node = Node(
-        package='f1tenth_path_planner',
+        package='path_planner',
         executable='local_avoidance_node',
         name='local_avoidance_node',
         output='screen',
