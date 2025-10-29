@@ -26,19 +26,26 @@ def generate_launch_description():
                 'launch',
                 'bringup_launch.py'
             ])
-        ])
+        ]),
+        launch_arguments={
+            'vesc_config': PathJoinSubstitution([
+                FindPackageShare('f1tenth'),
+                'config',
+                'vesc_no_servo.yaml'
+            ])
+        }.items()
     )
 
-    # Static TF: base_link -> camera_gyro_frame (same as laser position)
-    static_tf_camera = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        name='static_baselink_to_camera',
-        arguments=['0.27', '0.0', '0.11', '0.0', '0.0', '0.0', 'base_link', 'camera_gyro_frame'],
-        output='screen'
-    )
+    # # Static TF: base_link -> camera_gyro_frame (same as laser position)
+    # static_tf_camera = Node(
+    #     package='tf2_ros',
+    #     executable='static_transform_publisher',
+    #     name='static_baselink_to_camera',
+    #     arguments=['0.27', '0.0', '0.11', '0.0', '0.0', '0.0', 'base_link', 'camera_base_link'],
+    #     output='screen'
+    # )
 
     return LaunchDescription([
         f1tenth_bringup,
-        static_tf_camera
+        # static_tf_camera
     ])
