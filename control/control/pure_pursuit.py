@@ -24,13 +24,13 @@ class PurePursuitController(Node):
         super().__init__('pure_pursuit_controller')
         
         # Parameters
-        self.declare_parameter('lookahead_distance', 2.5)  # meters (increased for better cornering)
-        self.declare_parameter('speed', 0.3)  # m/s (fixed speed)
-        self.declare_parameter('wheelbase', 0.3302)  # meters (F1TENTH wheelbase)
-        self.declare_parameter('max_steering_angle', 0.4189)  # radians (~24 degrees)
-        self.declare_parameter('path_topic', '/local_path')  # prefer local over global
+        self.declare_parameter('lookahead_distance', 2.5)
+        self.declare_parameter('speed', 0.3)
+        self.declare_parameter('wheelbase', 0.3302)
+        self.declare_parameter('max_steering_angle', 0.4189)
+        self.declare_parameter('path_topic', '/local_path')
         self.declare_parameter('fallback_path_topic', '/global_path')
-        self.declare_parameter('odom_topic', '/ego_racecar/odom')  # f1tenth_gym_ros namespace
+        self.declare_parameter('odom_topic', '/ego_racecar/odom')
         self.declare_parameter('drive_topic', '/drive')
 
         # Get parameters
@@ -44,7 +44,7 @@ class PurePursuitController(Node):
         self.global_path = None
         self.local_path = None
         self.local_path_timestamp = None
-        self.local_path_timeout = 1.0  # seconds
+        self.local_path_timeout = 1.0
         
         # TF2 for coordinate transformations
         self.tf_buffer = Buffer()
@@ -99,13 +99,11 @@ class PurePursuitController(Node):
         if len(msg.poses) > 0:
             self.local_path = msg
             self.local_path_timestamp = self.get_clock().now()
-            # self.get_logger().info(f'Received local path with {len(msg.poses)} waypoints')
 
     def fallback_path_callback(self, msg):
         """Global path callback"""
         if len(msg.poses) > 0:
             self.global_path = msg
-            # self.get_logger().info(f'Received global path with {len(msg.poses)} waypoints')
 
     def get_current_path(self):
         """
