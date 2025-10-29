@@ -14,6 +14,7 @@ options = {
   tracking_frame = "imu_link",
   published_frame = "base_link",
   odom_frame = "odom",
+  lookup_transform_timeout_sec = 0.2,
   provide_odom_frame = false,
   publish_frame_projected_to_2d = true,
   use_odometry = true,
@@ -45,3 +46,5 @@ TRAJECTORY_BUILDER_2D.use_online_correlative_scan_matching = true
 POSE_GRAPH.optimize_every_n_nodes = 90
 POSE_GRAPH.constraint_builder.min_score = 0.55
 POSE_GRAPH.constraint_builder.global_localization_min_score = 0.6
+
+return options
