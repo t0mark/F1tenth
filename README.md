@@ -56,22 +56,16 @@ source install/setup.bash
 ### 실제 로봇 연결
 ```bash
 # F1TENTH 로봇 연결 (VESC, 센서 등)
-ros2 launch f1tenth_stack bringup_launch.py
+ros2 launch f1tenth hardware_launch.py
 
 # RealSense 카메라 실행
-ros2 launch realsense2_camera rs_launch.py \
-  enable_gyro:=true \
-  enable_accel:=true \
-  unite_imu_method:=1
+ros2 launch f1tenth camera_launch.py
 ```
 
 ### 시뮬레이션 - 통합 시스템 실행
 ```bash
 # 중심선 기반 경로 + 장애물 회피 + 제어
-ros2 launch path_planner path_planner_launch.py \
-  global_config:=global_centerline.yaml \
-  local_config:=local_avoidance.yaml \
-  is_integrated:=false
+ros2 launch path_planner path_planner_launch.py
 ```
 
 ### 시뮬레이션 - 개별 패키지 실행
@@ -123,10 +117,3 @@ src/
 └── control/           # 차량 제어
     └── config/        # 제어 파라미터
 ```
-
-## 📝 참고
-
-각 패키지의 상세 문서는 해당 디렉토리의 README 참조:
-- [simulator/README.md](simulator/README.md)
-- [path_planner/README.md](path_planner/README.md)
-- [control/README.md](control/README.md)
