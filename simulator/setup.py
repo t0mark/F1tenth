@@ -48,13 +48,13 @@ setup(
         # 런치 파일들 (.py 파일)
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
         # URDF/Xacro 파일들 (로봇 모델 정의)
-        (os.path.join('share', package_name, 'launch'), glob('launch/*.xacro')),
+        (os.path.join('share', package_name, 'urdf'), glob('urdf/*.xacro')),
         # RViz 설정 파일들 (시각화 설정)
-        (os.path.join('share', package_name, 'launch'), glob('launch/*.rviz')),
-        # 설정 파일들 (매개변수 등)
+        (os.path.join('share', package_name, 'rviz'), glob('rviz/*.rviz')),
+        # 시뮬레이션 설정 파일들 (매개변수 등)
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
-        # 맵 파일들 (.yaml, .png 등)
-        (os.path.join('share', package_name, 'maps'), glob('maps/*')),
+        # 맵 파일들 (YAML 메타데이터 + 이미지 파일)
+        (os.path.join('share', package_name, 'config', 'maps'), glob('config/maps/*')),
     ],
     # 설치 시 필요한 의존성
     install_requires=['setuptools'],
