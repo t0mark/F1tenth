@@ -22,7 +22,12 @@ from launch_ros.actions import Node
 def generate_launch_description():
     """Create launch description for checkpoint recorder node."""
     pkg_share = get_package_share_directory('path_planner')
-    default_csv_path = os.path.join(pkg_share, 'data', 'checkpoints.csv')
+    workspace_root = os.path.abspath(os.path.join(pkg_share, '..', '..', '..', '..'))
+    src_base = os.path.join(workspace_root, 'src', 'path_planner', 'path_planner')
+    if os.path.isdir(os.path.join(workspace_root, 'src')):
+        default_csv_path = os.path.join(src_base, 'data', 'checkpoints.csv')
+    else:
+        default_csv_path = os.path.join(pkg_share, 'data', 'checkpoints.csv')
     simulator_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
