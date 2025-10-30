@@ -1,7 +1,8 @@
--- Cartographer configuration for wheel odom + 2D lidar mapping.
+-- Cartographer configuration for wheel odom + 2D lidar + IMU mapping.
 -- Sensors:
 --  * Wheel odometry on topic `odom`
 --  * Hokuyo 10LX providing a single 2D scan on topic `scan`
+--  * IMU data on topic `/camera/camera/imu`
 
 include "map_builder.lua"
 include "trajectory_builder.lua"
@@ -29,14 +30,14 @@ options = {
   rangefinder_sampling_ratio = 1.,
   odometry_sampling_ratio = 1.,
   fixed_frame_pose_sampling_ratio = 1.,
-  imu_sampling_ratio = 0.,
+  imu_sampling_ratio = 1.,
   landmarks_sampling_ratio = 1.,
 }
 
 MAP_BUILDER.use_trajectory_builder_2d = true
 
 TRAJECTORY_BUILDER_2D.num_accumulated_range_data = 1
-TRAJECTORY_BUILDER_2D.use_imu_data = false
+TRAJECTORY_BUILDER_2D.use_imu_data = true
 TRAJECTORY_BUILDER_2D.min_range = 0.1
 TRAJECTORY_BUILDER_2D.max_range = 30.
 TRAJECTORY_BUILDER_2D.missing_data_ray_length = 5.

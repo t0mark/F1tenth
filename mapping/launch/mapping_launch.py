@@ -88,6 +88,9 @@ def generate_launch_description():
                 '-configuration_directory', config_directory,
                 '-configuration_basename', config_basename,
             ],
+            'remappings': [
+                ('imu', '/camera/camera/imu'),
+            ],
         }
         if map_stem:
             cartographer_kwargs['arguments'].extend([
