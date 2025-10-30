@@ -11,7 +11,6 @@ def generate_launch_description():
     
     # 설정 파일 경로
     amcl_config = os.path.join(pkg_share, 'config', 'amcl.yaml')
-    map_file = os.path.join(pkg_share, 'maps', 'underground/underground_map.yaml')
     ekf_launch_file = os.path.join(pkg_share, 'launch', 'ekf_launch.py')
     
     return LaunchDescription([
@@ -20,13 +19,6 @@ def generate_launch_description():
             'use_sim_time',
             default_value='false',
             description='Use simulation time'
-        ),
-        
-        # 맵 파일 경로
-        DeclareLaunchArgument(
-            'map',
-            default_value=map_file,
-            description='Full path to map file to load'
         ),
         
         # EKF 노드 런치를 별도 파일에서 포함
@@ -47,20 +39,6 @@ def generate_launch_description():
             ]
         ),
         
-        # Map Server (맵 로드)
-        Node(
-            package='nav2_map_server',
-            executable='map_server',
-            name='map_server',
-            output='screen',
-            parameters=[
-                {
-                    'yaml_filename': LaunchConfiguration('map'),
-                    'use_sim_time': LaunchConfiguration('use_sim_time')
-                }
-            ]
-        ),
-        
         # Lifecycle Manager (Nav2 노드 관리)
         Node(
             package='nav2_lifecycle_manager',
@@ -70,7 +48,7 @@ def generate_launch_description():
             parameters=[
                 {'use_sim_time': LaunchConfiguration('use_sim_time')},
                 {'autostart': True},
-                {'node_names': ['map_server', 'amcl']}
+                {'node_names': ['amcl']}
             ]
         ),
     ])
