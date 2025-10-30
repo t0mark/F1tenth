@@ -10,6 +10,7 @@ from geometry_msgs.msg import TransformStamped
 from geometry_msgs.msg import Transform
 from ackermann_msgs.msg import AckermannDriveStamped
 from tf2_ros import TransformBroadcaster
+from ament_index_python.packages import get_package_share_directory, PackageNotFoundError
 
 from pathlib import Path
 import gymnasium as gym
@@ -28,7 +29,11 @@ class GymBridge(Node):
         super().__init__('gym_bridge')
         
         package_root = Path(__file__).resolve().parents[1]
-        default_map_prefix = str(package_root / 'maps' / 'Spielberg_map')
+        try:
+            maps_share_dir = Path(get_package_share_directory('f1tenth')) / 'maps'
+        except PackageNotFoundError:
+            maps_share_dir = package_root.parent / 'f1tenth' / 'maps'
+        default_map_prefix = str(maps_share_dir / 'Spielberg_map')
 
         default_params = {
             'ego_namespace': 'ego_racecar',
