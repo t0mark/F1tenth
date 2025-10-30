@@ -24,7 +24,7 @@ Pure Pursuit 기반 경로 추종 및 조향 제어
 
 ### 1. F1TENTH Gym 설치
 ```bash
-git clone https://github.com/f1tenth/f1tenth_gym.git
+git clone https://github.com/t0mark/f1tenth_gym.git
 cd f1tenth_gym && pip install -e .
 ```
 
