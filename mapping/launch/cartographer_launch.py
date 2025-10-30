@@ -57,7 +57,7 @@ def _convert_pbstream_to_map(map_stem: str, wait_timeout_sec: float = 30.0):
 def generate_launch_description():
     config_directory = os.path.join(
         get_package_share_directory('mapping'), 'config')
-    config_basename = 'mapping.lua'
+    config_basename = 'cartographer.lua'
     rviz_config_path = os.path.join(
         get_package_share_directory('mapping'), 'rviz', 'map.rviz')
     default_maps_dir = os.path.join(os.path.expanduser('~'), 'f1tenth_maps')
