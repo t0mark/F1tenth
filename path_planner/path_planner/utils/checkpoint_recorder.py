@@ -2,6 +2,11 @@
 import csv
 import math
 import os
+import select
+import sys
+import threading
+import termios
+import tty
 from typing import List, Tuple
 
 import rclpy
@@ -45,6 +50,7 @@ class CheckpointRecorderNode(Node):
         self.clicked_topic = self.get_parameter('clicked_point_topic').get_parameter_value().string_value
 
         self._checkpoints: List[Tuple[float, float]] = []
+        self._lock = threading.Lock()
 
         # TF listener to retrieve current position on demand.
         self.tf_buffer = Buffer()
@@ -61,6 +67,10 @@ class CheckpointRecorderNode(Node):
                          durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.path_pub = self.create_publisher(Path, self.publish_topic, qos)
         self._publish_path()
+
+        # Background keyboard listener for removing checkpoints with 'y'.
+        self._keyboard_thread = threading.Thread(target=self._keyboard_loop, daemon=True)
+        self._keyboard_thread.start()
 
         self.get_logger().info(
             f'Checkpoint recorder ready (map_frame={self.map_frame}, clicked_topic={self.clicked_topic}, '
@@ -97,16 +107,20 @@ class CheckpointRecorderNode(Node):
         if result is None:
             return
 
-        self._checkpoints.append(result)
+        with self._lock:
+            self._checkpoints.append(result)
+            count = len(self._checkpoints)
         self.get_logger().info(
-            f'Checkpoint #{len(self._checkpoints)} recorded at x={result[0]:.2f}, y={result[1]:.2f}')
+            f'Checkpoint #{count} recorded at x={result[0]:.2f}, y={result[1]:.2f}')
         self._publish_path()
 
         if self.auto_save:
             self._write_csv()
 
     def _handle_save_checkpoints(self, request, response):
-        if not self._checkpoints:
+        with self._lock:
+            has_checkpoints = bool(self._checkpoints)
+        if not has_checkpoints:
             response.success = False
             response.message = 'No checkpoints to save.'
             return response
@@ -118,13 +132,16 @@ class CheckpointRecorderNode(Node):
             response.message = f'Failed to save CSV: {exc}'
             return response
 
+        with self._lock:
+            count = len(self._checkpoints)
         response.success = True
-        response.message = f'Saved {len(self._checkpoints)} checkpoints to {path}'
+        response.message = f'Saved {count} checkpoints to {path}'
         return response
 
     def _handle_clear_checkpoints(self, request, response):
-        count = len(self._checkpoints)
-        self._checkpoints.clear()
+        with self._lock:
+            count = len(self._checkpoints)
+            self._checkpoints.clear()
         self._publish_path()
         # Rewrite CSV with header only.
         self._write_csv()
@@ -133,30 +150,32 @@ class CheckpointRecorderNode(Node):
         return response
 
     def _publish_path(self):
+        with self._lock:
+            checkpoints = list(self._checkpoints)
         msg = Path()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = self.map_frame
 
-        for idx, (x, y) in enumerate(self._checkpoints):
+        for idx, (x, y) in enumerate(checkpoints):
             ps = PoseStamped()
             ps.header = msg.header
             ps.pose.position.x = x
             ps.pose.position.y = y
-            yaw = self._estimate_yaw(idx)
+            yaw = self._estimate_yaw(checkpoints, idx)
             ps.pose.orientation.z = math.sin(yaw / 2.0)
             ps.pose.orientation.w = math.cos(yaw / 2.0)
             msg.poses.append(ps)
         self.path_pub.publish(msg)
 
-    def _estimate_yaw(self, index: int) -> float:
-        if len(self._checkpoints) <= 1:
+    def _estimate_yaw(self, checkpoints: List[Tuple[float, float]], index: int) -> float:
+        if len(checkpoints) <= 1:
             return 0.0
-        if index < len(self._checkpoints) - 1:
-            next_x, next_y = self._checkpoints[index + 1]
-            curr_x, curr_y = self._checkpoints[index]
+        if index < len(checkpoints) - 1:
+            next_x, next_y = checkpoints[index + 1]
+            curr_x, curr_y = checkpoints[index]
         else:
-            curr_x, curr_y = self._checkpoints[index]
-            prev_x, prev_y = self._checkpoints[index - 1]
+            curr_x, curr_y = checkpoints[index]
+            prev_x, prev_y = checkpoints[index - 1]
             next_x, next_y = curr_x, curr_y
             curr_x, curr_y = prev_x, prev_y
         dx = next_x - curr_x
@@ -166,15 +185,70 @@ class CheckpointRecorderNode(Node):
         return math.atan2(dy, dx)
 
     def _write_csv(self) -> str:
+        with self._lock:
+            checkpoints = list(self._checkpoints)
         directory = os.path.dirname(self.output_csv_path)
         if directory:
             os.makedirs(directory, exist_ok=True)
         with open(self.output_csv_path, 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)
             writer.writerow(['x', 'y'])
-            writer.writerows(self._checkpoints)
-        self.get_logger().info(f'Saved {len(self._checkpoints)} checkpoints to {self.output_csv_path}')
+            writer.writerows(checkpoints)
+        self.get_logger().info(f'Saved {len(checkpoints)} checkpoints to {self.output_csv_path}')
         return self.output_csv_path
+
+    def _remove_last_checkpoint(self):
+        with self._lock:
+            if not self._checkpoints:
+                count = 0
+                removed = None
+            else:
+                removed = self._checkpoints.pop()
+                count = len(self._checkpoints)
+        if removed is None:
+            self.get_logger().info('No checkpoints to remove.')
+            return
+        self.get_logger().info(
+            f'Removed checkpoint #{count + 1} at x={removed[0]:.2f}, y={removed[1]:.2f}')
+        self._publish_path()
+        if self.auto_save:
+            self._write_csv()
+
+    def _keyboard_loop(self):
+        stream = sys.stdin if sys.stdin and sys.stdin.isatty() else None
+        close_stream = False
+
+        if stream is None:
+            try:
+                stream = open('/dev/tty')
+                close_stream = True
+            except OSError as exc:
+                self.get_logger().warn(f"키보드 입력을 사용할 수 없습니다: /dev/tty 열기 실패 ({exc}).")
+                return
+
+        fd = stream.fileno()
+        try:
+            old_settings = termios.tcgetattr(fd)
+        except termios.error as exc:
+            self.get_logger().warn(f'키보드 입력을 사용할 수 없습니다: {exc}')
+            if close_stream:
+                stream.close()
+            return
+
+        try:
+            tty.setcbreak(fd)
+            while rclpy.ok():
+                readers, _, _ = select.select([stream], [], [], 0.1)
+                if stream in readers:
+                    ch = stream.read(1)
+                    if ch.lower() == 'y':
+                        self._remove_last_checkpoint()
+        except Exception as exc:
+            self.get_logger().warn(f'Keyboard listener stopped: {exc}')
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            if close_stream:
+                stream.close()
 
 
 def main(args=None):
