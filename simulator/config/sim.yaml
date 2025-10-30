@@ -43,7 +43,7 @@ bridge:
 
     # map parameters
     map_path: 'track'  # Map name without extension (actual path resolved in launch file)
-    map_img_ext: '.png'
+    map_img_ext: '.pgm'
 
     # opponent parameters
     num_agent: 1
