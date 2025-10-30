@@ -8,12 +8,11 @@ from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
     pkg_share = get_package_share_directory('localization')
-    nav2_bringup_dir = get_package_share_directory('nav2_bringup')
     
     # 설정 파일 경로
-    ekf_config = os.path.join(pkg_share, 'config', 'ekf.yaml')
     amcl_config = os.path.join(pkg_share, 'config', 'amcl.yaml')
     map_file = os.path.join(pkg_share, 'maps', 'underground/underground_map.yaml')
+    ekf_launch_file = os.path.join(pkg_share, 'launch', 'ekf_launch.py')
     
     return LaunchDescription([
         # 시뮬레이션 시간 사용 여부
@@ -30,16 +29,10 @@ def generate_launch_description():
             description='Full path to map file to load'
         ),
         
-        # EKF 노드 - odom->base_link 발행 (매핑과 동일한 설정)
-        Node(
-            package='robot_localization',
-            executable='ekf_node',
-            name='ekf_filter_node',
-            output='screen',
-            parameters=[
-                ekf_config,
-                {'use_sim_time': LaunchConfiguration('use_sim_time')}
-            ]
+        # EKF 노드 런치를 별도 파일에서 포함
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(ekf_launch_file),
+            launch_arguments={'use_sim_time': LaunchConfiguration('use_sim_time')}.items()
         ),
         
         # AMCL 노드 - map->odom 발행
