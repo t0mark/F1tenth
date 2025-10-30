@@ -1,0 +1,41 @@
+ekf_filter_node:
+  ros__parameters:
+    frequency: 30.0
+    two_d_mode: true
+    publish_acceleration: false
+    publish_tf: false
+    
+    # 프레임 설정
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_link
+    world_frame: odom
+    
+    # -----------------------------------------------------------------
+    # 센서 0: Wheel Odometry (e.g., /odom)
+    # 애커맨 차량의 휠 오도메트리는 오직 '전방 속도(vX)'만 정확합니다.
+    # -----------------------------------------------------------------
+    odom0: /odom
+    odom0_config: [false, false, false,  # X, Y, Z
+                   false, false, false,  # Roll, Pitch, Yaw
+                   true,  false, false,  # vX (True), vY (False), vZ (False)
+                   false, false, false,  # vRoll, vPitch, vYaw
+                   false, false, false]  # aX, aY, aZ
+    odom0_differential: false
+    odom0_queue_size: 10
+
+    # -----------------------------------------------------------------
+    # 센서 1: IMU (e.g., /camera/camera/imu)
+    # IMU는 '절대 방위(Yaw)'와 '각속도(vYaw)', '전방 가속도(aX)'를 제공합니다.
+    # -----------------------------------------------------------------
+    imu0: /camera/camera/imu
+    imu0_config: [false, false, false,  # X, Y, Z
+                  false, false, true,   # Roll, Pitch, Yaw (True)
+                  false, false, false,  # vX, vY, vZ
+                  false, false, true,   # vRoll, vPitch, vYaw (True)
+                  true,  false, false]  # aX (True), aY (False), aZ (False)
+    imu0_differential: true
+    imu0_queue_size: 10
+    imu0_remove_gravitational_acceleration: true
+
+
