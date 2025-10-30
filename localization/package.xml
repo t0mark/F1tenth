@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>localizaiton</name>
+  <name>localization</name>
   <version>0.1.0</version>
   <description>Launch and configuration files for EKF-based localization and slam_toolbox mapping.</description>
 
