@@ -204,57 +204,6 @@ class GymBridge(Node):
             self.ego_steer = -0.3
         else:
             self.ego_steer = 0.0
-
-    def _reset_environment(self, poses):
-        """
-        Gymnasium API helper to reset simulator state while keeping cached scans in sync.
-        """
-        self.obs, _ = self.env.reset(options={'poses': np.asarray(poses, dtype=float)})
-        self.terminated = False
-        self.truncated = False
-        self._update_sim_state()
-
-    def ego_reset_callback(self, pose_msg):
-        """
-        ego 차량 위치 리셋 콜백
-        - 목적: RViz 등의 /initialpose 입력을 받아 ego(및 필요 시 opp)의 초기 포즈로 시뮬레이터 리셋
-        - 입력: geometry_msgs/PoseWithCovarianceStamped (x, y, quaternion)
-        - Rviz에서 초기 Pose 설정 시, ego 차량을 이동
-        - 좌표/프레임: 맵 좌표계(map) 기준 포즈로 가정
-        """
-        rx = pose_msg.pose.pose.position.x
-        ry = pose_msg.pose.pose.position.y
-        rqx = pose_msg.pose.pose.orientation.x
-        rqy = pose_msg.pose.pose.orientation.y
-        rqz = pose_msg.pose.pose.orientation.z
-        rqw = pose_msg.pose.pose.orientation.w
-        _, _, rtheta = euler.quat2euler([rqw, rqx, rqy, rqz], axes='sxyz')
-        
-        if self.has_opp:
-            opp_pose = [self.obs['poses_x'][1], self.obs['poses_y'][1], self.obs['poses_theta'][1]]
-            poses = np.array([[rx, ry, rtheta], opp_pose], dtype=float)
-        else:
-            poses = np.array([[rx, ry, rtheta]], dtype=float)
-        self._reset_environment(poses)
-
-    def opp_reset_callback(self, pose_msg):
-        """
-        opp 차량 위치 리셋 콜백 (다중 에이전트일 때만)
-        - 목적: /goal_pose 입력을 받아 opp 포즈만 갱신하여 env.reset 수행
-        - 입력: geometry_msgs/PoseStamped
-        - Rivz에서 Goal 설정 시, opp 차량을 이동
-        """
-        if self.has_opp:
-            rx = pose_msg.pose.position.x
-            ry = pose_msg.pose.position.y
-            rqx = pose_msg.pose.orientation.x
-            rqy = pose_msg.pose.orientation.y
-            rqz = pose_msg.pose.orientation.z
-            rqw = pose_msg.pose.orientation.w
-            _, _, rtheta = euler.quat2euler([rqw, rqx, rqy, rqz], axes='sxyz')
-            poses = np.array([list(self.ego_pose), [rx, ry, rtheta]], dtype=float)
-            self._reset_environment(poses)
-
     
     def drive_timer_callback(self):
         """
@@ -323,7 +272,7 @@ class GymBridge(Node):
         """
         scan = LaserScan()
         scan.header.stamp = ts
-        scan.header.frame_id = self.ego_namespace + '/laser'
+        scan.header.frame_id = 'laser'
         scan.angle_min = self.angle_min
         scan.angle_max = self.angle_max
         scan.angle_increment = self.angle_inc
@@ -354,7 +303,7 @@ class GymBridge(Node):
         ego_odom = Odometry()
         ego_odom.header.stamp = ts
         ego_odom.header.frame_id = 'map'
-        ego_odom.child_frame_id = self.ego_namespace + '/base_link'
+        ego_odom.child_frame_id = 'base_link'
         ego_odom.pose.pose.position.x = self.ego_pose[0]
         ego_odom.pose.pose.position.y = self.ego_pose[1]
         ego_quat = euler.euler2quat(0., 0., self.ego_pose[2], axes='sxyz')
@@ -406,7 +355,7 @@ class GymBridge(Node):
         ego_ts.transform = ego_t
         ego_ts.header.stamp = ts
         ego_ts.header.frame_id = 'map'
-        ego_ts.child_frame_id = self.ego_namespace + '/base_link'
+        ego_ts.child_frame_id = 'base_link'
         self.br.sendTransform(ego_ts)
 
         if self.has_opp:
@@ -440,11 +389,11 @@ class GymBridge(Node):
         ego_wheel_ts.transform.rotation.z = ego_wheel_quat[3]
         ego_wheel_ts.transform.rotation.w = ego_wheel_quat[0]
         ego_wheel_ts.header.stamp = ts
-        ego_wheel_ts.header.frame_id = self.ego_namespace + '/front_left_hinge'
-        ego_wheel_ts.child_frame_id = self.ego_namespace + '/front_left_wheel'
+        ego_wheel_ts.header.frame_id = 'front_left_hinge'
+        ego_wheel_ts.child_frame_id = 'front_left_wheel'
         self.br.sendTransform(ego_wheel_ts)
-        ego_wheel_ts.header.frame_id = self.ego_namespace + '/front_right_hinge'
-        ego_wheel_ts.child_frame_id = self.ego_namespace + '/front_right_wheel'
+        ego_wheel_ts.header.frame_id = 'front_right_hinge'
+        ego_wheel_ts.child_frame_id = 'front_right_wheel'
         self.br.sendTransform(ego_wheel_ts)
 
         if self.has_opp:
@@ -471,8 +420,8 @@ class GymBridge(Node):
         ego_scan_ts.transform.translation.x = self.scan_distance_to_base_link
         ego_scan_ts.transform.rotation.w = 1.
         ego_scan_ts.header.stamp = ts
-        ego_scan_ts.header.frame_id = self.ego_namespace + '/base_link'
-        ego_scan_ts.child_frame_id = self.ego_namespace + '/laser'
+        ego_scan_ts.header.frame_id = 'base_link'
+        ego_scan_ts.child_frame_id = 'laser'
         self.br.sendTransform(ego_scan_ts)
 
         if self.has_opp:
