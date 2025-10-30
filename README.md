@@ -70,15 +70,6 @@ ros2 launch path_planner path_planner_launch.py
 ```bash
 # 1. 시뮬레이터
 ros2 launch simulator gym_bridge_launch.py
-
-# 2. 경로 계획 (중심선)
-ros2 launch path_planner centerline_avoidance_launch.py
-
-# 3. 경로 계획 (체크포인트)
-ros2 launch path_planner checkpoint_avoidance_launch.py
-
-# 4. 제어
-ros2 launch control pure_pursuit_launch.py
 ```
 
 ### 체크포인트 기록
@@ -106,7 +97,7 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 
 ```
 src/
-├── simulator/          # 시뮬레이터 브리지
+├── simulator/         # 시뮬레이터 브리지
 │   ├── config/        # 맵, 파라미터
 │   └── urdf/          # 차량 모델
 ├── path_planner/      # 경로 계획
