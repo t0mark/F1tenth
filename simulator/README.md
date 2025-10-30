@@ -34,7 +34,7 @@ ros2 launch simulator gym_bridge_launch.py
 
 # 특정 맵
 ros2 launch simulator gym_bridge_launch.py \
-  map_path:=$(ros2 pkg prefix simulator)/share/simulator/config/maps/Spielberg_map.yaml
+  map_path:=$(ros2 pkg prefix f1tenth)/share/f1tenth/maps/Spielberg_map.yaml
 ```
 
 ### 토픽
@@ -75,6 +75,6 @@ map
 ## 📂 구조
 
 - `config/sim.yaml`: 기본 파라미터
-- `config/maps/`: 맵 파일 (PNG, YAML)
+- *(맵 파일은 `f1tenth` 패키지의 `maps/` 디렉터리에 위치)*
 - `urdf/`: 차량 모델 (Xacro)
 - `rviz/`: RViz 설정
