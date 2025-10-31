@@ -38,17 +38,4 @@ def generate_launch_description():
                 {'use_sim_time': LaunchConfiguration('use_sim_time')}
             ]
         ),
-        
-        # Lifecycle Manager (Nav2 노드 관리)
-        Node(
-            package='nav2_lifecycle_manager',
-            executable='lifecycle_manager',
-            name='lifecycle_manager_localization',
-            output='screen',
-            parameters=[
-                {'use_sim_time': LaunchConfiguration('use_sim_time')},
-                {'autostart': True},
-                {'node_names': ['amcl']}
-            ]
-        ),
     ])

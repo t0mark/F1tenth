@@ -25,6 +25,7 @@ from launch.actions import (
 )
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -97,6 +98,18 @@ def generate_launch_description():
         ]
     )
 
+    lifecycle_manager_node = Node(
+        package='nav2_lifecycle_manager',
+        executable='lifecycle_manager',
+        name='lifecycle_manager_localization',
+        output='screen',
+        parameters=[{
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'autostart': True,
+            'node_names': ['map_server', 'amcl'],
+        }]
+    )
+
     # 3. Path planner - localization 이후 4초 지연
     path_planner_launch = TimerAction(
         period=4.0,
@@ -141,6 +154,7 @@ def generate_launch_description():
         global_config_arg,
         local_config_arg,
         map_server_launch,
+        lifecycle_manager_node,
         localization_launch,
         path_planner_launch,
         control_launch,

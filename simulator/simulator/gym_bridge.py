@@ -204,7 +204,56 @@ class GymBridge(Node):
             self.ego_steer = -0.3
         else:
             self.ego_steer = 0.0
-    
+
+    def _reset_environment(self, poses):
+        """
+        Gymnasium 환경을 지정 포즈로 리셋하고 내부 상태를 초기화.
+        """
+        self.obs, _ = self.env.reset(options={'poses': np.asarray(poses, dtype=float)})
+        self.terminated = False
+        self.truncated = False
+        self._update_sim_state()
+
+    def ego_reset_callback(self, pose_msg):
+        """
+        RViz 등에서 /initialpose를 수신해 ego 차량 위치를 리셋.
+        """
+        rx = pose_msg.pose.pose.position.x
+        ry = pose_msg.pose.pose.position.y
+        quat = pose_msg.pose.pose.orientation
+        _, _, rtheta = euler.quat2euler(
+            [quat.w, quat.x, quat.y, quat.z],
+            axes='sxyz'
+        )
+
+        if self.has_opp:
+            opp_pose = [
+                self.obs['poses_x'][1],
+                self.obs['poses_y'][1],
+                self.obs['poses_theta'][1],
+            ]
+            poses = np.array([[rx, ry, rtheta], opp_pose], dtype=float)
+        else:
+            poses = np.array([[rx, ry, rtheta]], dtype=float)
+        self._reset_environment(poses)
+
+    def opp_reset_callback(self, pose_msg):
+        """
+        /goal_pose를 이용해 상대 차량(opp) 위치를 리셋.
+        """
+        if not self.has_opp:
+            return
+
+        rx = pose_msg.pose.position.x
+        ry = pose_msg.pose.position.y
+        quat = pose_msg.pose.orientation
+        _, _, rtheta = euler.quat2euler(
+            [quat.w, quat.x, quat.y, quat.z],
+            axes='sxyz'
+        )
+        poses = np.array([list(self.ego_pose), [rx, ry, rtheta]], dtype=float)
+        self._reset_environment(poses)
+
     def drive_timer_callback(self):
         """
         물리 시뮬레이션 스텝 실행 (주기 타이머)
