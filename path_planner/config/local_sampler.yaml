@@ -9,6 +9,6 @@ local_planner:
 
     # 글로벌 경로 입력 및 샘플링 설정
     global_path_topic: '/global_path'
-    sampling_distance: 4.0
+    sampling_distance: 3.0
     lookahead_distance: 20.0
-    update_hz: 10
+    update_hz: 100
