@@ -8,7 +8,8 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 
 from nav_msgs.msg import Odometry, Path
 from ackermann_msgs.msg import AckermannDriveStamped
-from tf2_ros import Buffer, TransformListener
+from geometry_msgs.msg import PointStamped
+from visualization_msgs.msg import Marker
 
 
 class PurePursuitController(Node):
@@ -17,43 +18,50 @@ class PurePursuitController(Node):
     - Subscribes to global/local path and odometry
     - Publishes Ackermann drive commands
     - Uses local path (priority) and global path (fallback) for steering control
-    - Fixed speed control with pure pursuit steering algorithm
+    - Adaptive speed control based on path curvature
+    - Adaptive lookahead distance based on current speed
+    - Steering angle smoothing for stable control
     """
 
     def __init__(self):
         super().__init__('pure_pursuit_controller')
         
         # Parameters
-        self.declare_parameter('lookahead_distance', 2.5)
-        self.declare_parameter('speed', 0.3)
         self.declare_parameter('wheelbase', 0.3302)
         self.declare_parameter('max_steering_angle', 0.4189)
         self.declare_parameter('path_topic', '/local_path')
         self.declare_parameter('fallback_path_topic', '/global_path')
-        self.declare_parameter('odom_topic', '/odom')
+        self.declare_parameter('odom_topic', '/ego_racecar/odom')
         self.declare_parameter('drive_topic', '/drive')
-        self.declare_parameter('v_min', 0.5)  # 기본값 0.5로 v_min 선언
-        self.declare_parameter('v_max', 1.5)  # 기본값 1.5로 v_max 선언
+        self.declare_parameter('v_min', 1.3)
+        self.declare_parameter('v_max', 5.0)
+        self.declare_parameter('ld_min', 0.8)
+        self.declare_parameter('ld_max', 2.1)
+        self.declare_parameter('max_curvature', 1.0)
+        self.declare_parameter('local_path_timeout', 1.0)
+        self.declare_parameter('control_rate_hz', 50.0)
+        self.declare_parameter('steer_smooth_alpha', 0.3)
 
         # Get parameters
-        self.lookahead_distance = self.get_parameter('lookahead_distance').value
-        self.speed = self.get_parameter('speed').value
         self.wheelbase = self.get_parameter('wheelbase').value
         self.max_steering_angle = self.get_parameter('max_steering_angle').value
         self.v_min = self.get_parameter('v_min').value
         self.v_max = self.get_parameter('v_max').value
+        self.ld_min = self.get_parameter('ld_min').value
+        self.ld_max = self.get_parameter('ld_max').value
+        self.max_curvature = self.get_parameter('max_curvature').value
+        self.local_path_timeout = self.get_parameter('local_path_timeout').value
+        self.control_rate_hz = self.get_parameter('control_rate_hz').value
+        self.steer_smooth_alpha = self.get_parameter('steer_smooth_alpha').value
         
         # State variables
         self.current_pose = None
         self.global_path = None
         self.local_path = None
         self.local_path_timestamp = None
-        self.local_path_timeout = 1.0
-        
-        # TF2 for coordinate transformations
-        self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self)
-        
+        self.current_speed = self.v_min
+        self.previous_steering_angle = 0.0
+
         # QoS profiles
         qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
         
@@ -85,13 +93,22 @@ class PurePursuitController(Node):
             self.get_parameter('drive_topic').value,
             10
         )
-        
-        # Control timer (50 Hz)
-        self.control_timer = self.create_timer(0.02, self.control_loop)
+        self.lookahead_point_pub = self.create_publisher(
+            PointStamped, '/lookahead_point', 10)
+        self.speed_marker_pub = self.create_publisher(
+            Marker, '/speed_marker', 10)
+        self.steering_marker_pub = self.create_publisher(
+            Marker, '/steering_marker', 10)
+
+        # Control timer
+        control_period = 1.0 / self.control_rate_hz
+        self.control_timer = self.create_timer(control_period, self.control_loop)
         
         self.get_logger().info('Pure Pursuit Controller initialized')
-        self.get_logger().info(f'Lookahead distance: {self.lookahead_distance}m')
-        self.get_logger().info(f'Fixed speed: {self.speed} m/s')
+        self.get_logger().info(f'Adaptive speed: min={self.v_min} m/s, max={self.v_max} m/s')
+        self.get_logger().info(f'Adaptive lookahead: min={self.ld_min} m, max={self.ld_max} m')
+        self.get_logger().info(f'Control rate: {self.control_rate_hz} Hz')
+        self.get_logger().info(f'Steering smoothing: alpha={self.steer_smooth_alpha}')
         self.get_logger().info('Local path priority enabled for steering control')
 
     def odom_callback(self, msg):
@@ -132,14 +149,20 @@ class PurePursuitController(Node):
             
         return None
 
-    def find_target_point(self):
+    def get_adaptive_lookahead(self, current_speed):
+        """Calculate adaptive lookahead distance based on speed"""
+        speed_factor = (current_speed - self.v_min) / (self.v_max - self.v_min)
+        speed_factor = max(0.0, min(1.0, speed_factor))
+        return self.ld_min + speed_factor * (self.ld_max - self.ld_min)
+
+    def find_target_point(self, lookahead_distance):
         """
         Find target point on path using lookahead distance
-        Returns target point coordinates (target_x, target_y) or None if not found
+        Returns target point coordinates (target_x, target_y) and its index, or (None, None)
         """
         path = self.get_current_path()
         if not path or not self.current_pose:
-            return None
+            return None, None
             
         current_x = self.current_pose.position.x
         current_y = self.current_pose.position.y
@@ -176,15 +199,15 @@ class PurePursuitController(Node):
             dy = target_y - current_y
             dist = math.sqrt(dx*dx + dy*dy)
             
-            if dist >= self.lookahead_distance:
-                return target_x, target_y
+            if dist >= lookahead_distance:
+                return (target_x, target_y), i
         
         # If no point found at lookahead distance, use last point
         if len(path.poses) > 0:
             last_pose = path.poses[-1].pose
-            return last_pose.position.x, last_pose.position.y
+            return (last_pose.position.x, last_pose.position.y), len(path.poses) - 1
             
-        return None
+        return None, None
 
     def pure_pursuit_control(self, target_point):
         """
@@ -232,6 +255,45 @@ class PurePursuitController(Node):
         
         return steering_angle
 
+    def calculate_curvature_at_point(self, path, index):
+        """Calculate curvature at a specific point on the path using Menger curvature."""
+        if len(path.poses) < 3:
+            return 0.0
+
+        # Use 3 consecutive points to calculate curvature
+        p1_idx = max(0, index - 1)
+        p2_idx = index
+        p3_idx = min(len(path.poses) - 1, index + 1)
+
+        p1 = path.poses[p1_idx].pose.position
+        p2 = path.poses[p2_idx].pose.position
+        p3 = path.poses[p3_idx].pose.position
+
+        # Triangle area using cross product
+        area = 0.5 * abs(p1.x * (p2.y - p3.y) + p2.x * (p3.y - p1.y) + p3.x * (p1.y - p2.y))
+
+        # Side lengths
+        d12 = math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2)
+        d23 = math.sqrt((p2.x - p3.x)**2 + (p2.y - p3.y)**2)
+        d31 = math.sqrt((p3.x - p1.x)**2 + (p3.y - p1.y)**2)
+
+        # Menger curvature formula: K = 4 * Area / (d1*d2*d3)
+        denominator = d12 * d23 * d31
+        if denominator < 1e-6:
+            return 0.0
+        
+        return 4.0 * area / denominator
+
+    def calculate_speed_from_curvature(self, curvature):
+        """Calculate adaptive speed based on path curvature."""
+        # Normalize curvature
+        curvature_factor = min(1.0, abs(curvature) / self.max_curvature)
+
+        # Higher curvature -> lower speed
+        speed = self.v_max - curvature_factor * (self.v_max - self.v_min)
+        
+        return max(self.v_min, min(self.v_max, speed))
+
     def control_loop(self):
         """Main control loop - runs at 50Hz"""
         current_path = self.get_current_path()
@@ -239,19 +301,96 @@ class PurePursuitController(Node):
             # Stop if no path or pose
             self.publish_drive_command(0.0, 0.0)
             return
-        
-        # Find target point for steering control
-        target_point = self.find_target_point()
+
+        # 1. Calculate adaptive lookahead based on previous speed
+        adaptive_lookahead = self.get_adaptive_lookahead(self.current_speed)
+
+        # 2. Find target point using this lookahead
+        target_point, target_idx = self.find_target_point(adaptive_lookahead)
         if not target_point:
             self.get_logger().warn('No target point found on path, stopping')
             self.publish_drive_command(0.0, 0.0)
             return
+
+        # 3. Calculate curvature at the target point
+        curvature = self.calculate_curvature_at_point(current_path, target_idx)
+
+        # 4. Calculate adaptive speed from curvature
+        adaptive_speed = self.calculate_speed_from_curvature(curvature)
+
+        # Publish lookahead point for visualization
+        lookahead_point_msg = PointStamped()
+        lookahead_point_msg.header.frame_id = 'map'
+        lookahead_point_msg.header.stamp = self.get_clock().now().to_msg()
+        lookahead_point_msg.point.x = target_point[0]
+        lookahead_point_msg.point.y = target_point[1]
+        lookahead_point_msg.point.z = 0.0
+        self.lookahead_point_pub.publish(lookahead_point_msg)
         
-        # Calculate steering angle using pure pursuit
-        steering_angle = self.pure_pursuit_control(target_point)
+        # 5. Calculate steering angle
+        raw_steering_angle = self.pure_pursuit_control(target_point)
+
+        # 6. Apply steering smoothing (exponential moving average)
+        steering_angle = (self.steer_smooth_alpha * raw_steering_angle +
+                         (1.0 - self.steer_smooth_alpha) * self.previous_steering_angle)
+        self.previous_steering_angle = steering_angle
+
+        # Publish speed as a text marker for visualization
+        marker = Marker()
+        marker.header.frame_id = 'base_link'
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.ns = 'speed'
+        marker.id = 0
+        marker.type = Marker.TEXT_VIEW_FACING
+        marker.action = Marker.ADD
+        marker.pose.position.x = 0.0
+        marker.pose.position.y = 0.0
+        marker.pose.position.z = 1.0  # Position above the car
+        marker.scale.z = 0.5  # Text size
+        marker.color.a = 1.0
+        marker.color.r = 1.0
+        marker.color.g = 1.0
+        marker.color.b = 1.0
+        marker.text = f'{adaptive_speed:.2f} m/s'
+        self.speed_marker_pub.publish(marker)
+
+        # Publish steering angle as an arrow marker for visualization
+        steer_marker = Marker()
+        steer_marker.header.frame_id = 'base_link'
+        steer_marker.header.stamp = self.get_clock().now().to_msg()
+        steer_marker.ns = 'steering'
+        steer_marker.id = 0
+        steer_marker.type = Marker.ARROW
+        steer_marker.action = Marker.ADD
         
-        # Publish drive command with fixed speed and calculated steering
-        self.publish_drive_command(self.speed, steering_angle)
+        # Position the arrow at the front of the car
+        steer_marker.pose.position.x = self.wheelbase 
+        
+        # Orientation from steering angle
+        yaw = steering_angle
+        q_w = math.cos(yaw * 0.5)
+        q_z = math.sin(yaw * 0.5)
+        steer_marker.pose.orientation.w = q_w
+        steer_marker.pose.orientation.z = q_z
+
+        # Scale of the arrow
+        steer_marker.scale.x = 0.5  # Length
+        steer_marker.scale.y = 0.1  # Width
+        steer_marker.scale.z = 0.1  # Height
+
+        # Color of the arrow (e.g., blue)
+        steer_marker.color.a = 1.0
+        steer_marker.color.r = 0.0
+        steer_marker.color.g = 0.0
+        steer_marker.color.b = 1.0
+
+        self.steering_marker_pub.publish(steer_marker)
+
+        # 7. Update current_speed for the next iteration
+        self.current_speed = adaptive_speed
+
+        # 8. Publish command
+        self.publish_drive_command(adaptive_speed, steering_angle)
 
     def publish_drive_command(self, speed, steering_angle):
         """Publish Ackermann drive command"""
