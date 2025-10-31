@@ -1,5 +1,5 @@
 # Local Path Sampler Configuration
-# CSV 경로를 일정 간격으로 재샘플링하여 로컬 경로를 발행
+# 글로벌 경로를 받아 로컬 경로를 발행
 
 local_planner:
   ros__parameters:
@@ -7,8 +7,8 @@ local_planner:
     node_executable: 'local_sampler_node'
     node_name: 'path_sampler_node'
 
-    # CSV 입력 및 샘플링 설정
-    csv_path: '${WORKSPACE_ROOT}/src/path_planner/data/checkpoints.csv'
-    sampling_distance: 3.0
+    # 글로벌 경로 입력 및 샘플링 설정
+    global_path_topic: '/global_path'
+    sampling_distance: 4.0
     lookahead_distance: 20.0
     update_hz: 10
