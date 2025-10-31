@@ -1,0 +1,16 @@
+# Global Centerline Planner Configuration
+# 맵 이미지에서 중심선을 자동 추출하여 글로벌 경로 생성
+
+global_planner:
+  ros__parameters:
+    # 실행할 노드 타입
+    node_executable: 'global_centerline_node'
+    node_name: 'global_centerline_node'
+
+    # 중심선 추출 파라미터
+    map_path: '${WORKSPACE_ROOT}/install/f1tenth/share/f1tenth/maps/track'
+    map_img_ext: '.png'
+    map_yaml_path: '${WORKSPACE_ROOT}/install/f1tenth/share/f1tenth/maps/track.yaml'
+    sample_step_m: 0.2
+    publish_topic: '/global_path'
+    save_centerline_overlay: true

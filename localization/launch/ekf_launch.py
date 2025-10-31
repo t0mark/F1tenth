@@ -26,6 +26,5 @@ def generate_launch_description():
                 ekf_config,
                 {'use_sim_time': LaunchConfiguration('use_sim_time')}
             ],
-            remappings=[('odometry/filtered', 'odom')]
         ),
     ])

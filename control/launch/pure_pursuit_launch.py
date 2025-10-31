@@ -16,8 +16,8 @@ def generate_launch_description():
     drive_topic_arg     = DeclareLaunchArgument('drive_topic', default_value='/drive')
 
     # Speed control parameters
-    vmin_arg   = DeclareLaunchArgument('v_min', default_value='1.3')
-    vmax_arg   = DeclareLaunchArgument('v_max', default_value='5.0')
+    vmin_arg   = DeclareLaunchArgument('v_min', default_value='0.5')
+    vmax_arg   = DeclareLaunchArgument('v_max', default_value='2.0')
     max_curvature_arg = DeclareLaunchArgument('max_curvature', default_value='1.0')
 
     # Lookahead parameters

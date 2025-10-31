@@ -135,7 +135,7 @@ def generate_launch_description():
         ]
     )
 
-    # 4. Control - 경로 플래너 이후 6초 지연
+    # 4. Control - 경로 플래너 이후 2초 지연
     control_launch = TimerAction(
         period=2.0,
         actions=[

@@ -9,7 +9,6 @@ from nav_msgs.msg import Path as NavPath
 from geometry_msgs.msg import PoseStamped
 from tf2_ros import TransformListener, Buffer
 from tf2_ros.transform_listener import TransformListener
-import math
 
 class PathSamplerNode(Node):
     def __init__(self):
@@ -46,12 +45,10 @@ class PathSamplerNode(Node):
             rclpy.shutdown()
             return
         
-        # 샘플링된 경로 생성
-        self.sampled_waypoints = self._resample_path()
+        self.waypoints_np = np.array(self.waypoints) if self.waypoints else np.empty((0, 2))
         
-        self.get_logger().info(f"원본 경로 포인트: {len(self.waypoints)}")
-        self.get_logger().info(f"샘플링된 경로 포인트: {len(self.sampled_waypoints)}")
-        self.get_logger().info(f"샘플링 거리: {self.sampling_distance}m")
+        self.get_logger().info(f"로드된 경로 포인트: {len(self.waypoints)}")
+        self.get_logger().info(f"샘플링 반경 내 포인트만 사용: {self.sampling_distance}m")
         self.get_logger().info(f"Lookahead 거리: {self.lookahead_distance}m")
         self.get_logger().info(f"TF 변환: {self.source_frame} -> {self.target_frame}")
         
@@ -104,54 +101,14 @@ class PathSamplerNode(Node):
             self.get_logger().error(f"CSV 로드 중 오류: {e}")
             return waypoints
     
-    def _resample_path(self):
-        """절대 거리 기준으로 경로를 리샘플링 (폐곡선)"""
-        if len(self.waypoints) < 2:
-            return self.waypoints
-        
-        sampled = []
-        sampled.append(self.waypoints[0])
-        
-        total_distance = 0.0
-        
-        for i in range(len(self.waypoints)):
-            p1 = self.waypoints[i]
-            p2 = self.waypoints[(i + 1) % len(self.waypoints)]
-            
-            segment_dist = np.linalg.norm(p2 - p1)
-            
-            if segment_dist < 1e-6:
-                continue
-            
-            direction = (p2 - p1) / segment_dist
-            
-            while True:
-                next_sample_dist = (len(sampled)) * self.sampling_distance
-                distance_along_segment = next_sample_dist - total_distance
-                
-                if distance_along_segment > segment_dist:
-                    break
-                
-                sample_point = p1 + direction * distance_along_segment
-                sampled.append(sample_point)
-            
-            total_distance += segment_dist
-        
-        self.get_logger().info(f"경로 재샘플링 완료: {len(sampled)} 포인트")
-        return sampled
-    
     def _find_nearest_waypoint_index(self, robot_position):
         """로봇 현재 위치에서 가장 가까운 경로 포인트 인덱스 찾기"""
-        if len(self.sampled_waypoints) == 0:
+        if self.waypoints_np.size == 0:
             return 0
         
-        distances = []
-        for waypoint in self.sampled_waypoints:
-            dist = np.linalg.norm(waypoint - robot_position)
-            distances.append(dist)
-        
-        nearest_idx = np.argmin(distances)
-        nearest_distance = distances[nearest_idx]
+        distances = np.linalg.norm(self.waypoints_np - robot_position, axis=1)
+        nearest_idx = int(np.argmin(distances))
+        nearest_distance = float(distances[nearest_idx])
         
         self.get_logger().debug(
             f"로봇 위치 (map): ({robot_position[0]:.3f}, {robot_position[1]:.3f}), "
@@ -160,33 +117,64 @@ class PathSamplerNode(Node):
         
         return nearest_idx
     
-    def _get_lookahead_waypoints(self, start_idx):
-        """현재 위치에서 시작하여 lookahead 거리만큼의 포인트들 추출"""
-        if len(self.sampled_waypoints) == 0:
+    def _order_selected_indices(self, nearest_idx, selected_indices):
+        """선택된 인덱스를 시작 인덱스 기준으로 순차 정렬"""
+        if len(selected_indices) == 0:
             return []
+        
+        ordered = []
+        visited = set()
+        selected_set = set(int(i) for i in selected_indices)
+        n = len(self.waypoints_np)
+        
+        idx = nearest_idx
+        for _ in range(n):
+            if idx in selected_set and idx not in visited:
+                ordered.append(idx)
+                visited.add(idx)
+                if len(ordered) == len(selected_set):
+                    break
+            idx = (idx + 1) % n
+        
+        return ordered
+    
+    def _get_waypoints_within_radius(self, robot_position):
+        """샘플링 반경 내의 체크포인트를 로컬 경로로 사용"""
+        if self.waypoints_np.size == 0:
+            return []
+        
+        distances = np.linalg.norm(self.waypoints_np - robot_position, axis=1)
+        within_indices = np.where(distances <= self.sampling_distance)[0]
+        
+        nearest_idx = self._find_nearest_waypoint_index(robot_position)
+        
+        if within_indices.size == 0:
+            return [self.waypoints_np[nearest_idx]]
+        
+        ordered_indices = self._order_selected_indices(nearest_idx, within_indices)
+        if not ordered_indices:
+            ordered_indices = [nearest_idx]
         
         lookahead_points = []
         accumulated_distance = 0.0
-        idx = start_idx
+        previous_point = robot_position
         
-        for _ in range(len(self.sampled_waypoints)):
-            lookahead_points.append(self.sampled_waypoints[idx])
+        for idx in ordered_indices:
+            waypoint = self.waypoints_np[idx]
+            segment_dist = np.linalg.norm(waypoint - previous_point)
+            accumulated_distance += segment_dist
             
-            if accumulated_distance >= self.lookahead_distance:
+            if accumulated_distance > self.lookahead_distance and len(lookahead_points) > 0:
                 break
             
-            next_idx = (idx + 1) % len(self.sampled_waypoints)
-            segment_dist = np.linalg.norm(
-                self.sampled_waypoints[next_idx] - self.sampled_waypoints[idx]
-            )
-            accumulated_distance += segment_dist
-            idx = next_idx
+            lookahead_points.append(waypoint)
+            previous_point = waypoint
         
         return lookahead_points
     
     def timer_callback(self):
         """주기적으로 로컬 경로 발행"""
-        if not self.sampled_waypoints:
+        if not self.waypoints:
             return
         
         # TF2를 통해 로봇 현재 위치 (map 프레임) 추출
@@ -199,11 +187,8 @@ class PathSamplerNode(Node):
             )
             return
         
-        # 현재 로봇 위치에서 가장 가까운 포인트 찾기
-        nearest_idx = self._find_nearest_waypoint_index(robot_position)
-        
-        # lookahead 거리만큼 포인트 추출
-        lookahead_waypoints = self._get_lookahead_waypoints(nearest_idx)
+        # 샘플링 반경 내의 포인트 추출
+        lookahead_waypoints = self._get_waypoints_within_radius(robot_position)
         
         # 로컬 경로 메시지 생성
         path_msg = NavPath()

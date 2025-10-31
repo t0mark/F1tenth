@@ -1,18 +1,27 @@
 <?xml version="1.0"?>
-<package format="2">
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
   <name>path_planner</name>
-  <version>0.0.1</version>
-  <description>Path planner node that publishes local paths from global waypoints</description>
-  <maintainer email="your_email@example.com">Your Name</maintainer>
-  <license>Apache-2.0</license>
+  <version>0.1.0</version>
+  <description>Global centerline waypoints and LiDAR-based local path planner for F1TENTH Gym ROS2</description>
+  <maintainer email="tomark@example.com">tomark</maintainer>
+  <license>MIT</license>
 
   <buildtool_depend>ament_python</buildtool_depend>
 
-  <depend>rclpy</depend>
-  <depend>nav_msgs</depend>
-  <depend>geometry_msgs</depend>
-  <depend>std_msgs</depend>
-  <depend>numpy</depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>python3-skimage</exec_depend>
+
+  <!-- Python libs (pip) required by nodes) -->
+  <!-- Ensure these are installed in your environment: opencv-python, scikit-image, pyyaml, numpy -->
 
   <export>
     <build_type>ament_python</build_type>
