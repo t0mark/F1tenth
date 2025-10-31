@@ -6,9 +6,12 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 
+import tf2_ros
+from tf2_geometry_msgs import do_transform_pose
+
 from nav_msgs.msg import Odometry, Path
 from ackermann_msgs.msg import AckermannDriveStamped
-from geometry_msgs.msg import PointStamped
+from geometry_msgs.msg import PointStamped, PoseStamped
 from visualization_msgs.msg import Marker
 
 
@@ -53,7 +56,11 @@ class PurePursuitController(Node):
         self.local_path_timeout = self.get_parameter('local_path_timeout').value
         self.control_rate_hz = self.get_parameter('control_rate_hz').value
         self.steer_smooth_alpha = self.get_parameter('steer_smooth_alpha').value
-
+        
+        # TF
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
+        
         # State variables
         self.current_pose = None
         self.global_path = None
@@ -112,9 +119,21 @@ class PurePursuitController(Node):
         self.get_logger().info('Local path priority enabled for steering control')
 
     def odom_callback(self, msg):
-        """Update current vehicle pose from global odometry (map frame)"""
-        # Directly use pose from global odometry (already in map frame)
-        self.current_pose = msg.pose.pose
+        """Update current vehicle pose from odometry"""
+        if not self.tf_buffer.can_transform('map', msg.header.frame_id, rclpy.time.Time()):
+            self.get_logger().warn(f'Could not transform from {msg.header.frame_id} to map, waiting for transform')
+            return
+            
+        try:
+            pose_stamped = PoseStamped()
+            pose_stamped.header = msg.header
+            pose_stamped.pose = msg.pose.pose
+            
+            transformed_pose_stamped = self.tf_buffer.transform(pose_stamped, 'map')
+            self.current_pose = transformed_pose_stamped.pose
+            
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
+            self.get_logger().error(f'Could not transform pose: {e}')
 
     def path_callback(self, msg):
         """Local path callback"""
