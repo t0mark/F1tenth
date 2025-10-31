@@ -125,14 +125,12 @@ class PurePursuitController(Node):
             return
             
         try:
-            transform = self.tf_buffer.lookup_transform('map', msg.header.frame_id, rclpy.time.Time())
-            
             pose_stamped = PoseStamped()
             pose_stamped.header = msg.header
             pose_stamped.pose = msg.pose.pose
             
-            transformed_pose = do_transform_pose(pose_stamped, transform)
-            self.current_pose = transformed_pose.pose
+            transformed_pose_stamped = self.tf_buffer.transform(pose_stamped, 'map')
+            self.current_pose = transformed_pose_stamped.pose
             
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
             self.get_logger().error(f'Could not transform pose: {e}')
