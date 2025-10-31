@@ -11,7 +11,7 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    """Launch Nav2 map_server with lifecycle manager."""
+    """Launch Nav2 map_server."""
     f1tenth_share = get_package_share_directory('f1tenth')
     default_map = os.path.join(f1tenth_share, 'maps', 'track.yaml')
 
@@ -44,22 +44,9 @@ def generate_launch_description():
         }]
     )
 
-    lifecycle_manager_node = Node(
-        package='nav2_lifecycle_manager',
-        executable='lifecycle_manager',
-        name='lifecycle_manager_localization',
-        output='screen',
-        parameters=[{
-            'use_sim_time': LaunchConfiguration('use_sim_time'),
-            'autostart': True,
-            'node_names': ['map_server'],
-        }]
-    )
-
     return LaunchDescription([
         use_sim_time_arg,
         map_yaml_arg,
         map_topic_arg,
         map_server_node,
-        lifecycle_manager_node,
     ])

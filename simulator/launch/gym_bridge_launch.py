@@ -103,7 +103,19 @@ def generate_launch_description():
             }.items()
         )
 
-        return [bridge_node, map_server_launch]
+        lifecycle_manager_node = Node(
+            package='nav2_lifecycle_manager',
+            executable='lifecycle_manager',
+            name='lifecycle_manager_sim',
+            output='screen',
+            parameters=[{
+                'use_sim_time': False,
+                'autostart': True,
+                'node_names': ['map_server'],
+            }]
+        )
+
+        return [bridge_node, map_server_launch, lifecycle_manager_node]
     
     # RViz 시각화 노드
     rviz_node = Node(
