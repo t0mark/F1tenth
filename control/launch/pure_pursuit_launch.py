@@ -8,7 +8,7 @@ from launch_ros.actions import Node
 def generate_launch_description():
     # 기본 인자(시작값) — 이후 노드가 자동으로 조정함
     lookahead_arg = DeclareLaunchArgument('lookahead_distance', default_value='1.2')
-    speed_arg     = DeclareLaunchArgument('speed', default_value='2.0')
+    speed_arg     = DeclareLaunchArgument('speed', default_value='6.0')
     wheelbase_arg = DeclareLaunchArgument('wheelbase', default_value='0.3302')
     maxsteer_arg  = DeclareLaunchArgument('max_steering_angle', default_value='0.418879')  # 24°
 
@@ -19,13 +19,13 @@ def generate_launch_description():
 
     # Adaptive 관련 인자(원하면 CLI로 조정)
     vmin_arg   = DeclareLaunchArgument('v_min', default_value='1.3') # 1.0
-    vmax_arg   = DeclareLaunchArgument('v_max', default_value='3.0') # 2.0
-    aymax_arg  = DeclareLaunchArgument('a_y_max', default_value='4.4') # 3.0
+    vmax_arg   = DeclareLaunchArgument('v_max', default_value='20.0') # 2.0
+    aymax_arg  = DeclareLaunchArgument('a_y_max', default_value='9.5') # 3.0
 
-    ld_straight_arg = DeclareLaunchArgument('ld_straight', default_value='1.9') #1.3
-    ld_corner_arg   = DeclareLaunchArgument('ld_corner', default_value='0.8') # 0.9
+    ld_straight_arg = DeclareLaunchArgument('ld_straight', default_value='2.0') #1.3
+    ld_corner_arg   = DeclareLaunchArgument('ld_corner', default_value='0.5') # 0.9
     ld_min_arg      = DeclareLaunchArgument('ld_min', default_value='0.8') # 0.8
-    ld_max_arg      = DeclareLaunchArgument('ld_max', default_value='2.1') # 1.6
+    ld_max_arg      = DeclareLaunchArgument('ld_max', default_value='4.0') # 1.6
     dthr_arg        = DeclareLaunchArgument('delta_corner_thresh', default_value='0.20944')  # 12°
 
     ltimeout_arg = DeclareLaunchArgument('local_path_timeout', default_value='0.5') # 1.0
