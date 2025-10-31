@@ -3,7 +3,7 @@ ekf_filter_node:
     frequency: 30.0
     two_d_mode: true
     publish_acceleration: false
-    publish_tf: false
+    publish_tf: true
     
     # 프레임 설정
     map_frame: map
