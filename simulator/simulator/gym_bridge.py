@@ -131,7 +131,7 @@ class GymBridge(Node):
         # 토픽 이름 설정
         ego_scan_topic = self.get_parameter('ego_scan_topic').value
         ego_drive_topic = self.get_parameter('ego_drive_topic').value
-        ego_odom_topic = self.ego_namespace + '/' + self.get_parameter('ego_odom_topic').value
+        ego_odom_topic = self.get_parameter('ego_odom_topic').value
 
         if self.has_opp:
             opp_scan_topic = self.get_parameter('opp_scan_topic').value
