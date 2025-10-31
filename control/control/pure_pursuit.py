@@ -38,6 +38,8 @@ class PurePursuitController(Node):
         self.speed = self.get_parameter('speed').value
         self.wheelbase = self.get_parameter('wheelbase').value
         self.max_steering_angle = self.get_parameter('max_steering_angle').value
+        self.v_min = self.get_parameter('v_min').value
+        self.v_max = self.get_parameter('v_max').value
         
         # State variables
         self.current_pose = None
