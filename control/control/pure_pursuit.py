@@ -41,6 +41,8 @@ class PurePursuitController(Node):
         self.declare_parameter('local_path_timeout', 1.0)
         self.declare_parameter('control_rate_hz', 50.0)
         self.declare_parameter('steer_smooth_alpha', 0.3)
+        self.declare_parameter('curvature_exponent', 1.5)
+        self.declare_parameter('ref_velocity', self.get_parameter('v_max').get_parameter_value().double_value)
 
         # Get parameters
         self.wheelbase = self.get_parameter('wheelbase').value
@@ -53,6 +55,8 @@ class PurePursuitController(Node):
         self.local_path_timeout = self.get_parameter('local_path_timeout').value
         self.control_rate_hz = self.get_parameter('control_rate_hz').value
         self.steer_smooth_alpha = self.get_parameter('steer_smooth_alpha').value
+        self.curvature_exponent = self.get_parameter('curvature_exponent').value
+        self.ref_velocity = self.get_parameter('ref_velocity').value
 
         # State variables
         self.current_pose = None
@@ -103,7 +107,13 @@ class PurePursuitController(Node):
         # Control timer
         control_period = 1.0 / self.control_rate_hz
         self.control_timer = self.create_timer(control_period, self.control_loop)
-    
+        
+        self.get_logger().info('Pure Pursuit Controller initialized')
+        self.get_logger().info(f'Adaptive speed: min={self.v_min} m/s, max={self.v_max} m/s')
+        self.get_logger().info(f'Adaptive lookahead: min={self.ld_min} m, max={self.ld_max} m')
+        self.get_logger().info(f'Control rate: {self.control_rate_hz} Hz')
+        self.get_logger().info(f'Steering smoothing: alpha={self.steer_smooth_alpha}')
+        self.get_logger().info('Local path priority enabled for steering control')
 
     def odom_callback(self, msg):
         """Update current vehicle pose from global odometry (map frame)"""
@@ -115,6 +125,9 @@ class PurePursuitController(Node):
         if len(msg.poses) > 0:
             self.local_path = msg
             self.local_path_timestamp = self.get_clock().now()
+            self.get_logger().info(f'Received local path with {len(msg.poses)} poses.')
+            self.get_logger().info(f'First pose: {msg.poses[0].pose.position.x}, {msg.poses[0].pose.position.y}')
+            self.get_logger().info(f'Last pose: {msg.poses[-1].pose.position.x}, {msg.poses[-1].pose.position.y}')
 
     def fallback_path_callback(self, msg):
         """Global path callback"""
@@ -134,19 +147,55 @@ class PurePursuitController(Node):
             
             time_diff = (current_time - self.local_path_timestamp).nanoseconds / 1e9
             if time_diff < self.local_path_timeout:
+                # self.get_logger().debug('Using local path for steering control')
                 return self.local_path
         
         # Use global path as fallback
         if self.global_path is not None and len(self.global_path.poses) > 0:
+            # self.get_logger().debug('Using global path as fallback for steering control')
             return self.global_path
             
         return None
 
-    def get_adaptive_lookahead(self, current_speed):
-        """Calculate adaptive lookahead distance based on speed"""
-        speed_factor = (current_speed - self.v_min) / (self.v_max - self.v_min)
-        speed_factor = max(0.0, min(1.0, speed_factor))
-        return self.ld_min + speed_factor * (self.ld_max - self.ld_min)
+    def calculate_average_curvature(self, path):
+        """Calculate the average curvature of the given path."""
+        if len(path.poses) < 3:
+            return 0.0
+
+        total_curvature = 0.0
+        num_points = 0
+        for i in range(1, len(path.poses) - 1):
+            total_curvature += self.calculate_curvature_at_point(path, i)
+            num_points += 1
+        
+        if num_points == 0:
+            return 0.0
+            
+        return total_curvature / num_points
+
+    def calculate_lookahead_from_curvature_and_speed(self, avg_curvature, current_speed):
+        """Calculate adaptive lookahead based on path curvature and current speed."""
+        # 1. Calculate base lookahead from curvature (inverse non-linear relationship)
+        curvature_factor = min(1.0, abs(avg_curvature) / self.max_curvature)
+        base_ld = self.ld_max - pow(curvature_factor, self.curvature_exponent) * (self.ld_max - self.ld_min)
+
+        # 2. Adjust lookahead based on current speed
+        # Avoid division by zero if ref_velocity is not set
+        if self.ref_velocity > 0.1:
+            speed_ratio = current_speed / self.ref_velocity
+            adjusted_ld = base_ld * speed_ratio
+        else:
+            adjusted_ld = base_ld
+
+        # 3. Clamp the final lookahead distance
+        final_ld = max(self.ld_min, min(self.ld_max, adjusted_ld))
+        return final_ld
+
+    def calculate_speed_from_lookahead(self, lookahead_distance):
+        """Calculate adaptive speed based on lookahead distance (linear relationship)."""
+        ld_ratio = (lookahead_distance - self.ld_min) / (self.ld_max - self.ld_min)
+        speed = self.v_min + ld_ratio * (self.v_max - self.v_min)
+        return max(self.v_min, min(self.v_max, speed))
 
     def find_target_point(self, lookahead_distance):
         """
@@ -159,6 +208,9 @@ class PurePursuitController(Node):
             
         current_x = self.current_pose.position.x
         current_y = self.current_pose.position.y
+        self.get_logger().info(f'Current pose: ({current_x:.2f}, {current_y:.2f})')
+        self.get_logger().info(f'Lookahead distance: {lookahead_distance:.2f}')
+        
         # Get vehicle heading for forward-looking search
         q = self.current_pose.orientation
         yaw = math.atan2(2.0*(q.w*q.z + q.x*q.y), 1 - 2*(q.y*q.y + q.z*q.z))
@@ -182,6 +234,8 @@ class PurePursuitController(Node):
                 min_dist = dist
                 closest_idx = i
         
+        self.get_logger().info(f'Closest point index: {closest_idx}')
+
         # Search forward from closest point for lookahead distance
         for i in range(closest_idx, len(path.poses)):
             target_x = path.poses[i].pose.position.x
@@ -190,12 +244,15 @@ class PurePursuitController(Node):
             dx = target_x - current_x
             dy = target_y - current_y
             dist = math.sqrt(dx*dx + dy*dy)
+            self.get_logger().info(f'  - Checking point {i}: dist={dist:.2f}')
             
             if dist >= lookahead_distance:
+                self.get_logger().info(f'Target point found at index {i}')
                 return (target_x, target_y), i
         
         # If no point found at lookahead distance, use last point
         if len(path.poses) > 0:
+            self.get_logger().info('No target point found, using last point')
             last_pose = path.poses[-1].pose
             return (last_pose.position.x, last_pose.position.y), len(path.poses) - 1
             
@@ -294,21 +351,23 @@ class PurePursuitController(Node):
             self.publish_drive_command(0.0, 0.0)
             return
 
-        # 1. Calculate adaptive lookahead based on previous speed
-        adaptive_lookahead = self.get_adaptive_lookahead(self.current_speed)
+        # 1. Calculate average curvature of the path
+        avg_curvature = self.calculate_average_curvature(current_path)
 
-        # 2. Find target point using this lookahead
-        target_point, target_idx = self.find_target_point(adaptive_lookahead)
+        # 2. Calculate adaptive lookahead based on curvature and current speed
+        adaptive_lookahead = self.calculate_lookahead_from_curvature_and_speed(
+            avg_curvature, self.current_speed
+        )
+
+        # 3. Calculate adaptive speed from the new lookahead distance
+        adaptive_speed = self.calculate_speed_from_lookahead(adaptive_lookahead)
+
+        # 4. Find target point using this lookahead
+        target_point, _ = self.find_target_point(adaptive_lookahead)
         if not target_point:
             self.get_logger().warn('No target point found on path, stopping')
             self.publish_drive_command(0.0, 0.0)
             return
-
-        # 3. Calculate curvature at the target point
-        curvature = self.calculate_curvature_at_point(current_path, target_idx)
-
-        # 4. Calculate adaptive speed from curvature
-        adaptive_speed = self.calculate_speed_from_curvature(curvature)
 
         # Publish lookahead point for visualization
         lookahead_point_msg = PointStamped()
