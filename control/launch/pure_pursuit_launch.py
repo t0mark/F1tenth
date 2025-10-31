@@ -28,6 +28,8 @@ def generate_launch_description():
     ltimeout_arg = DeclareLaunchArgument('local_path_timeout', default_value='1.0')
     rate_arg     = DeclareLaunchArgument('control_rate_hz', default_value='50.0')
     smooth_arg   = DeclareLaunchArgument('steer_smooth_alpha', default_value='0.3') 
+    curvature_exponent_arg = DeclareLaunchArgument('curvature_exponent', default_value='1.5')
+    ref_velocity_arg = DeclareLaunchArgument('ref_velocity', default_value=LaunchConfiguration('v_max'))
 
     node = Node(
         package='control',
@@ -49,6 +51,8 @@ def generate_launch_description():
             'local_path_timeout':    LaunchConfiguration('local_path_timeout'),
             'control_rate_hz':       LaunchConfiguration('control_rate_hz'),
             'steer_smooth_alpha':    LaunchConfiguration('steer_smooth_alpha'),
+            'curvature_exponent':    LaunchConfiguration('curvature_exponent'),
+            'ref_velocity':          LaunchConfiguration('ref_velocity'),
         }]
     )
 
@@ -58,5 +62,6 @@ def generate_launch_description():
         vmin_arg, vmax_arg, max_curvature_arg,
         ld_min_arg, ld_max_arg,
         ltimeout_arg, rate_arg, smooth_arg,
+        curvature_exponent_arg, ref_velocity_arg,
         node
     ])
