@@ -120,6 +120,10 @@ class PurePursuitController(Node):
 
     def odom_callback(self, msg):
         """Update current vehicle pose from odometry"""
+        if not self.tf_buffer.can_transform('map', msg.header.frame_id, rclpy.time.Time()):
+            self.get_logger().warn(f'Could not transform from {msg.header.frame_id} to map, waiting for transform')
+            return
+            
         try:
             transform = self.tf_buffer.lookup_transform('map', msg.header.frame_id, rclpy.time.Time())
             
