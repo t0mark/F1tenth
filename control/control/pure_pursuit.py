@@ -159,9 +159,6 @@ class PurePursuitController(Node):
             
         current_x = self.current_pose.position.x
         current_y = self.current_pose.position.y
-        self.get_logger().info(f'Current pose: ({current_x:.2f}, {current_y:.2f})')
-        self.get_logger().info(f'Lookahead distance: {lookahead_distance:.2f}')
-        
         # Get vehicle heading for forward-looking search
         q = self.current_pose.orientation
         yaw = math.atan2(2.0*(q.w*q.z + q.x*q.y), 1 - 2*(q.y*q.y + q.z*q.z))
@@ -185,8 +182,6 @@ class PurePursuitController(Node):
                 min_dist = dist
                 closest_idx = i
         
-        self.get_logger().info(f'Closest point index: {closest_idx}')
-
         # Search forward from closest point for lookahead distance
         for i in range(closest_idx, len(path.poses)):
             target_x = path.poses[i].pose.position.x
@@ -195,15 +190,12 @@ class PurePursuitController(Node):
             dx = target_x - current_x
             dy = target_y - current_y
             dist = math.sqrt(dx*dx + dy*dy)
-            self.get_logger().info(f'  - Checking point {i}: dist={dist:.2f}')
             
             if dist >= lookahead_distance:
-                self.get_logger().info(f'Target point found at index {i}')
                 return (target_x, target_y), i
         
         # If no point found at lookahead distance, use last point
         if len(path.poses) > 0:
-            self.get_logger().info('No target point found, using last point')
             last_pose = path.poses[-1].pose
             return (last_pose.position.x, last_pose.position.y), len(path.poses) - 1
             

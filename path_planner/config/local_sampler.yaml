@@ -9,6 +9,6 @@ local_planner:
 
     # CSV 입력 및 샘플링 설정
     csv_path: '${WORKSPACE_ROOT}/src/path_planner/data/checkpoints.csv'
-    sampling_distance: 1.0
+    sampling_distance: 3.0
     lookahead_distance: 20.0
     update_hz: 10

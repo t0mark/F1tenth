@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 
+import math
 import rclpy
 from rclpy.node import Node
 import numpy as np
 import csv
 from pathlib import Path
 from nav_msgs.msg import Path as NavPath
+from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped
-from tf2_ros import TransformListener, Buffer
-from tf2_ros.transform_listener import TransformListener
 
 class PathSamplerNode(Node):
     def __init__(self):
@@ -29,13 +29,10 @@ class PathSamplerNode(Node):
         # Publisher
         self.path_pub = self.create_publisher(NavPath, '/local_path', 10)
         
-        # TF2 Buffer와 Listener 설정
-        self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self)
-        
-        # TF 프레임 설정
-        self.source_frame = 'map'      # 경로 기준 프레임
-        self.target_frame = 'base_link'  # 로봇 기준 프레임
+        # Odometry 구독
+        self.odom_position = None
+        self.odom_yaw = None
+        self.create_subscription(Odometry, '/odom', self._odom_callback, 10)
         
         # 경로 데이터 로드
         self.waypoints = self._load_path_from_csv()
@@ -50,33 +47,21 @@ class PathSamplerNode(Node):
         self.get_logger().info(f"로드된 경로 포인트: {len(self.waypoints)}")
         self.get_logger().info(f"샘플링 반경 내 포인트만 사용: {self.sampling_distance}m")
         self.get_logger().info(f"Lookahead 거리: {self.lookahead_distance}m")
-        self.get_logger().info(f"TF 변환: {self.source_frame} -> {self.target_frame}")
+        self.get_logger().info("/odom 토픽을 사용해 로봇 위치를 추적합니다.")
         
         # 타이머 (100Hz)
         timer_period = 1.0 / update_hz
         self.timer = self.create_timer(timer_period, self.timer_callback)
+        self._last_odom_warn_time = None
     
-    def _get_robot_position_from_tf(self):
-        """TF2를 통해 map 프레임에서의 로봇 현재 위치 추출"""
-        try:
-            # map 프레임에서의 base_link 위치 쿼리
-            transform = self.tf_buffer.lookup_transform(
-                self.source_frame,  # 목표 프레임 (map)
-                self.target_frame,  # 원본 프레임 (base_link)
-                rclpy.time.Time()   # 최신 변환 사용
-            )
-            
-            # 위치 추출
-            position = np.array([
-                transform.transform.translation.x,
-                transform.transform.translation.y
-            ])
-            
-            return position, True
-        
-        except Exception as e:
-            self.get_logger().warn(f"TF 변환 실패: {e}")
-            return np.array([0.0, 0.0]), False
+    def _odom_callback(self, msg: Odometry):
+        """/odom 토픽에서 최신 로봇 위치와 자세(yaw)를 추출"""
+        position = msg.pose.pose.position
+        orientation = msg.pose.pose.orientation
+        self.odom_position = np.array([position.x, position.y], dtype=float)
+        siny_cosp = 2.0 * (orientation.w * orientation.z + orientation.x * orientation.y)
+        cosy_cosp = 1.0 - 2.0 * (orientation.y * orientation.y + orientation.z * orientation.z)
+        self.odom_yaw = math.atan2(siny_cosp, cosy_cosp)
     
     def _load_path_from_csv(self):
         """CSV 파일에서 경로 포인트 로드"""
@@ -138,37 +123,57 @@ class PathSamplerNode(Node):
         
         return ordered
     
-    def _get_waypoints_within_radius(self, robot_position):
-        """샘플링 반경 내의 체크포인트를 로컬 경로로 사용"""
+    def _get_waypoints_within_radius(self, robot_position, robot_yaw):
+        """CSV 순서를 유지하며 로봇 앞쪽에서 샘플링 반경과 Lookahead 조건을 만족하는 포인트 선택"""
         if self.waypoints_np.size == 0:
             return []
         
-        distances = np.linalg.norm(self.waypoints_np - robot_position, axis=1)
-        within_indices = np.where(distances <= self.sampling_distance)[0]
-        
+        heading = np.array([math.cos(robot_yaw), math.sin(robot_yaw)], dtype=float)
         nearest_idx = self._find_nearest_waypoint_index(robot_position)
+        n = len(self.waypoints_np)
         
-        if within_indices.size == 0:
+        # 로봇 앞쪽에 있는 최초의 waypoint 인덱스 탐색
+        start_idx = None
+        for step in range(n):
+            idx = (nearest_idx + step) % n
+            vector = self.waypoints_np[idx] - robot_position
+            if float(np.dot(vector, heading)) > 0.0:
+                start_idx = idx
+                break
+        
+        if start_idx is None:
+            # 모든 포인트가 뒤쪽이라면 가장 가까운 포인트만 사용
             return [self.waypoints_np[nearest_idx]]
-        
-        ordered_indices = self._order_selected_indices(nearest_idx, within_indices)
-        if not ordered_indices:
-            ordered_indices = [nearest_idx]
         
         lookahead_points = []
         accumulated_distance = 0.0
         previous_point = robot_position
         
-        for idx in ordered_indices:
+        for step in range(n):
+            idx = (start_idx + step) % n
             waypoint = self.waypoints_np[idx]
-            segment_dist = np.linalg.norm(waypoint - previous_point)
-            accumulated_distance += segment_dist
+            vector_from_robot = waypoint - robot_position
+            dot = float(np.dot(vector_from_robot, heading))
+            if dot <= 0.0:
+                break  # 더 이상 로봇 앞쪽이 아님
             
-            if accumulated_distance > self.lookahead_distance and len(lookahead_points) > 0:
-                break
+            distance_from_robot = float(np.linalg.norm(vector_from_robot))
+            if distance_from_robot > self.sampling_distance:
+                if lookahead_points:
+                    break
+                continue
             
+            segment_dist = float(np.linalg.norm(waypoint - previous_point))
+            if lookahead_points:
+                accumulated_distance += segment_dist
             lookahead_points.append(waypoint)
             previous_point = waypoint
+            
+            if accumulated_distance >= self.lookahead_distance:
+                break
+        
+        if not lookahead_points:
+            lookahead_points.append(self.waypoints_np[nearest_idx])
         
         return lookahead_points
     
@@ -177,18 +182,21 @@ class PathSamplerNode(Node):
         if not self.waypoints:
             return
         
-        # TF2를 통해 로봇 현재 위치 (map 프레임) 추출
-        robot_position, tf_success = self._get_robot_position_from_tf()
-        
-        if not tf_success:
-            self.get_logger().warn_throttle(
-                1.0,  # 1초마다 한 번만 출력
-                "TF 변환을 가져올 수 없습니다. 경로를 발행하지 않습니다."
-            )
+        # /odom 토픽에서 로봇 현재 위치 (map 프레임) 사용
+        if self.odom_position is None or self.odom_yaw is None:
+            now = self.get_clock().now()
+            if (
+                self._last_odom_warn_time is None
+                or (now - self._last_odom_warn_time).nanoseconds > int(1e9)
+            ):
+                self.get_logger().warn("/odom 데이터를 아직 수신하지 못했습니다. 경로를 발행하지 않습니다.")
+                self._last_odom_warn_time = now
             return
         
+        robot_position = self.odom_position.copy()
+        
         # 샘플링 반경 내의 포인트 추출
-        lookahead_waypoints = self._get_waypoints_within_radius(robot_position)
+        lookahead_waypoints = self._get_waypoints_within_radius(robot_position, self.odom_yaw)
         
         # 로컬 경로 메시지 생성
         path_msg = NavPath()
