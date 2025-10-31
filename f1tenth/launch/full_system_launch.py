@@ -119,8 +119,8 @@ def generate_launch_description():
         }]
     )
 
-    # 3. Path planner - localization 이후 2초 지연
-    path_planner_launch = TimerAction(
+    # 3. Path Sampler (CSV-based) - localization 이후 2초 지연
+    path_sampler_launch = TimerAction(
         period=2.0,
         actions=[
             IncludeLaunchDescription(
@@ -128,14 +128,9 @@ def generate_launch_description():
                     PathJoinSubstitution([
                         FindPackageShare('path_planner'),
                         'launch',
-                        'path_planner_launch.py'
+                        'sampler_launch.py'
                     ])
-                ),
-                launch_arguments={
-                    'global_config': LaunchConfiguration('global_config'),
-                    'local_config': LaunchConfiguration('local_config'),
-                    'is_integrated': 'true'
-                }.items()
+                )
             )
         ]
     )
@@ -177,7 +172,7 @@ def generate_launch_description():
         map_server_launch,
         lifecycle_manager_node,
         localization_launch,
-        path_planner_launch,
+        path_sampler_launch,
         control_launch,
         rviz_node,
     ])
