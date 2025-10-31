@@ -113,7 +113,6 @@ class PurePursuitController(Node):
         self.get_logger().info(f'Adaptive lookahead: min={self.ld_min} m, max={self.ld_max} m')
         self.get_logger().info(f'Control rate: {self.control_rate_hz} Hz')
         self.get_logger().info(f'Steering smoothing: alpha={self.steer_smooth_alpha}')
-        self.get_logger().info('Local path priority enabled for steering control')
 
     def odom_callback(self, msg):
         """Update current vehicle pose from global odometry (map frame)"""
@@ -125,9 +124,6 @@ class PurePursuitController(Node):
         if len(msg.poses) > 0:
             self.local_path = msg
             self.local_path_timestamp = self.get_clock().now()
-            self.get_logger().info(f'Received local path with {len(msg.poses)} poses.')
-            self.get_logger().info(f'First pose: {msg.poses[0].pose.position.x}, {msg.poses[0].pose.position.y}')
-            self.get_logger().info(f'Last pose: {msg.poses[-1].pose.position.x}, {msg.poses[-1].pose.position.y}')
 
     def fallback_path_callback(self, msg):
         """Global path callback"""
@@ -147,12 +143,10 @@ class PurePursuitController(Node):
             
             time_diff = (current_time - self.local_path_timestamp).nanoseconds / 1e9
             if time_diff < self.local_path_timeout:
-                # self.get_logger().debug('Using local path for steering control')
                 return self.local_path
         
         # Use global path as fallback
         if self.global_path is not None and len(self.global_path.poses) > 0:
-            # self.get_logger().debug('Using global path as fallback for steering control')
             return self.global_path
             
         return None
@@ -203,8 +197,6 @@ class PurePursuitController(Node):
             
         current_x = self.current_pose.position.x
         current_y = self.current_pose.position.y
-        self.get_logger().info(f'Current pose: ({current_x:.2f}, {current_y:.2f})')
-        self.get_logger().info(f'Lookahead distance: {lookahead_distance:.2f}')
         
         # Get vehicle heading for forward-looking search
         q = self.current_pose.orientation
@@ -228,8 +220,6 @@ class PurePursuitController(Node):
             if angle_diff < math.pi/2 and dist < min_dist:
                 min_dist = dist
                 closest_idx = i
-        
-        self.get_logger().info(f'Closest point index: {closest_idx}')
 
         # Search forward from closest point for lookahead distance
         for i in range(closest_idx, len(path.poses)):
@@ -239,15 +229,13 @@ class PurePursuitController(Node):
             dx = target_x - current_x
             dy = target_y - current_y
             dist = math.sqrt(dx*dx + dy*dy)
-            self.get_logger().info(f'  - Checking point {i}: dist={dist:.2f}')
             
             if dist >= lookahead_distance:
-                self.get_logger().info(f'Target point found at index {i}')
                 return (target_x, target_y), i
         
         # If no point found at lookahead distance, use last point
         if len(path.poses) > 0:
-            self.get_logger().info('No target point found, using last point')
+            self.get_logger().warn('No target point found, using last point')
             last_pose = path.poses[-1].pose
             return (last_pose.position.x, last_pose.position.y), len(path.poses) - 1
             
