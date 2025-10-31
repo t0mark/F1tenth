@@ -147,6 +147,23 @@ def generate_launch_description():
         ]
     )
 
+    rviz_config_path = PathJoinSubstitution([
+        FindPackageShare('f1tenth'),
+        'rviz',
+        'f1tenth.rviz'
+    ])
+
+    rviz_node = Node(
+        package='rviz2',
+        executable='rviz2',
+        name='f1tenth_rviz',
+        output='screen',
+        arguments=['-d', rviz_config_path],
+        parameters=[{
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+        }]
+    )
+
     return LaunchDescription([
         use_sim_time_arg,
         map_arg,
@@ -158,4 +175,5 @@ def generate_launch_description():
         localization_launch,
         path_planner_launch,
         control_launch,
+        rviz_node,
     ])
