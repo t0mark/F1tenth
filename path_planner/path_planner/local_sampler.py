@@ -4,8 +4,6 @@ import math
 import rclpy
 from rclpy.node import Node
 import numpy as np
-import csv
-from pathlib import Path
 from nav_msgs.msg import Path as NavPath
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped
@@ -15,13 +13,13 @@ class PathSamplerNode(Node):
         super().__init__('path_sampler_node')
         
         # 파라미터 선언
-        self.declare_parameter('csv_path', './centerline.csv')
+        self.declare_parameter('global_path_topic', '/global_path')
         self.declare_parameter('sampling_distance', 3.0)
         self.declare_parameter('update_hz', 100)
         self.declare_parameter('lookahead_distance', 20.0)
         
         # 파라미터 읽기
-        self.csv_path = self.get_parameter('csv_path').value
+        self.global_path_topic = self.get_parameter('global_path_topic').value
         self.sampling_distance = self.get_parameter('sampling_distance').value
         update_hz = self.get_parameter('update_hz').value
         self.lookahead_distance = self.get_parameter('lookahead_distance').value
@@ -34,18 +32,14 @@ class PathSamplerNode(Node):
         self.odom_yaw = None
         self.create_subscription(Odometry, '/odom', self._odom_callback, 10)
         
-        # 경로 데이터 로드
-        self.waypoints = self._load_path_from_csv()
+        # 글로벌 경로 구독
+        self.global_path_np = np.empty((0, 2))
+        self._path_received = False
+        self._last_path_warn_time = None
+        self.create_subscription(NavPath, self.global_path_topic, self._global_path_callback, 10)
         
-        if len(self.waypoints) < 2:
-            self.get_logger().error("경로 포인트가 2개 미만입니다.")
-            rclpy.shutdown()
-            return
-        
-        self.waypoints_np = np.array(self.waypoints) if self.waypoints else np.empty((0, 2))
-        
-        self.get_logger().info(f"로드된 경로 포인트: {len(self.waypoints)}")
-        self.get_logger().info(f"샘플링 반경 내 포인트만 사용: {self.sampling_distance}m")
+        self.get_logger().info(f"글로벌 경로 토픽 구독: {self.global_path_topic}")
+        self.get_logger().info(f"샘플링 반경: {self.sampling_distance}m")
         self.get_logger().info(f"Lookahead 거리: {self.lookahead_distance}m")
         self.get_logger().info("/odom 토픽을 사용해 로봇 위치를 추적합니다.")
         
@@ -63,35 +57,28 @@ class PathSamplerNode(Node):
         cosy_cosp = 1.0 - 2.0 * (orientation.y * orientation.y + orientation.z * orientation.z)
         self.odom_yaw = math.atan2(siny_cosp, cosy_cosp)
     
-    def _load_path_from_csv(self):
-        """CSV 파일에서 경로 포인트 로드"""
-        waypoints = []
-        try:
-            csv_file = Path(self.csv_path)
-            if not csv_file.exists():
-                self.get_logger().error(f"CSV 파일을 찾을 수 없습니다: {self.csv_path}")
-                return waypoints
-            
-            with open(csv_file, 'r') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    x = float(row['x'])
-                    y = float(row['y'])
-                    waypoints.append(np.array([x, y]))
-            
-            self.get_logger().info(f"CSV에서 {len(waypoints)}개의 포인트 로드 완료")
-            return waypoints
+    def _global_path_callback(self, msg: NavPath):
+        """글로벌 경로 메시지를 수신해 내부 경로 배열을 갱신"""
+        if not msg.poses:
+            self.global_path_np = np.empty((0, 2))
+            return
         
-        except Exception as e:
-            self.get_logger().error(f"CSV 로드 중 오류: {e}")
-            return waypoints
+        path_points = np.array(
+            [[pose.pose.position.x, pose.pose.position.y] for pose in msg.poses],
+            dtype=float
+        )
+        self.global_path_np = path_points
+        self._last_path_warn_time = None
+        if not getattr(self, "_path_received", False):
+            self._path_received = True
+            self.get_logger().info(f"글로벌 경로 포인트 수신: {len(self.global_path_np)}")
     
-    def _find_nearest_waypoint_index(self, robot_position):
+    def _find_nearest_path_index(self, robot_position):
         """로봇 현재 위치에서 가장 가까운 경로 포인트 인덱스 찾기"""
-        if self.waypoints_np.size == 0:
+        if self.global_path_np.size == 0:
             return 0
         
-        distances = np.linalg.norm(self.waypoints_np - robot_position, axis=1)
+        distances = np.linalg.norm(self.global_path_np - robot_position, axis=1)
         nearest_idx = int(np.argmin(distances))
         nearest_distance = float(distances[nearest_idx])
         
@@ -102,62 +89,46 @@ class PathSamplerNode(Node):
         
         return nearest_idx
     
-    def _order_selected_indices(self, nearest_idx, selected_indices):
-        """선택된 인덱스를 시작 인덱스 기준으로 순차 정렬"""
-        if len(selected_indices) == 0:
-            return []
-        
-        ordered = []
-        visited = set()
-        selected_set = set(int(i) for i in selected_indices)
-        n = len(self.waypoints_np)
-        
-        idx = nearest_idx
-        for _ in range(n):
-            if idx in selected_set and idx not in visited:
-                ordered.append(idx)
-                visited.add(idx)
-                if len(ordered) == len(selected_set):
-                    break
-            idx = (idx + 1) % n
-        
-        return ordered
-    
     def _get_waypoints_within_radius(self, robot_position, robot_yaw):
-        """CSV 순서를 유지하며 로봇 앞쪽에서 샘플링 반경과 Lookahead 조건을 만족하는 포인트 선택"""
-        if self.waypoints_np.size == 0:
+        """글로벌 경로 순서를 유지하며 로봇 앞쪽에서 샘플링 반경과 Lookahead 조건을 만족하는 포인트 선택"""
+        if self.global_path_np.size == 0:
             return []
         
         heading = np.array([math.cos(robot_yaw), math.sin(robot_yaw)], dtype=float)
-        nearest_idx = self._find_nearest_waypoint_index(robot_position)
-        n = len(self.waypoints_np)
+        nearest_idx = self._find_nearest_path_index(robot_position)
+        n = len(self.global_path_np)
         
         # 로봇 앞쪽에 있는 최초의 waypoint 인덱스 탐색
         start_idx = None
         for step in range(n):
             idx = (nearest_idx + step) % n
-            vector = self.waypoints_np[idx] - robot_position
+            vector = self.global_path_np[idx] - robot_position
             if float(np.dot(vector, heading)) > 0.0:
                 start_idx = idx
                 break
         
         if start_idx is None:
             # 모든 포인트가 뒤쪽이라면 가장 가까운 포인트만 사용
-            return [self.waypoints_np[nearest_idx]]
+            return [self.global_path_np[nearest_idx]]
         
         lookahead_points = []
         accumulated_distance = 0.0
         previous_point = robot_position
+        first_forward_point = None
         
         for step in range(n):
             idx = (start_idx + step) % n
-            waypoint = self.waypoints_np[idx]
+            waypoint = self.global_path_np[idx]
             vector_from_robot = waypoint - robot_position
             dot = float(np.dot(vector_from_robot, heading))
             if dot <= 0.0:
-                break  # 더 이상 로봇 앞쪽이 아님
+                if lookahead_points:
+                    break  # 더 이상 로봇 앞쪽이 아님
+                continue  # 아직 포인트가 없으면 다음 후보 탐색
             
             distance_from_robot = float(np.linalg.norm(vector_from_robot))
+            if first_forward_point is None:
+                first_forward_point = waypoint
             if distance_from_robot > self.sampling_distance:
                 if lookahead_points:
                     break
@@ -166,6 +137,8 @@ class PathSamplerNode(Node):
             segment_dist = float(np.linalg.norm(waypoint - previous_point))
             if lookahead_points:
                 accumulated_distance += segment_dist
+            else:
+                accumulated_distance += distance_from_robot
             lookahead_points.append(waypoint)
             previous_point = waypoint
             
@@ -173,13 +146,23 @@ class PathSamplerNode(Node):
                 break
         
         if not lookahead_points:
-            lookahead_points.append(self.waypoints_np[nearest_idx])
+            if first_forward_point is not None:
+                lookahead_points.append(first_forward_point)
+            else:
+                lookahead_points.append(self.global_path_np[nearest_idx])
         
         return lookahead_points
     
     def timer_callback(self):
         """주기적으로 로컬 경로 발행"""
-        if not self.waypoints:
+        if self.global_path_np.size == 0:
+            now = self.get_clock().now()
+            if (
+                self._last_path_warn_time is None
+                or (now - self._last_path_warn_time).nanoseconds > int(1e9)
+            ):
+                self.get_logger().warn("글로벌 경로를 아직 수신하지 못했습니다. 경로를 발행하지 않습니다.")
+                self._last_path_warn_time = now
             return
         
         # /odom 토픽에서 로봇 현재 위치 (map 프레임) 사용
@@ -210,9 +193,45 @@ class PathSamplerNode(Node):
             pose.pose.position.x = float(waypoint[0])
             pose.pose.position.y = float(waypoint[1])
             pose.pose.position.z = 0.0
-            pose.pose.orientation.w = 1.0
-            
             path_msg.poses.append(pose)
+        
+        pose_count = len(path_msg.poses)
+        if pose_count == 1:
+            heading = np.array([math.cos(self.odom_yaw), math.sin(self.odom_yaw)], dtype=float)
+            yaw = math.atan2(heading[1], heading[0])
+            qz = math.sin(yaw / 2.0)
+            qw = math.cos(yaw / 2.0)
+            path_msg.poses[0].pose.orientation.z = qz
+            path_msg.poses[0].pose.orientation.w = qw
+        elif pose_count > 1:
+            for i in range(pose_count):
+                if i < pose_count - 1:
+                    next_point = np.array([
+                        path_msg.poses[i + 1].pose.position.x,
+                        path_msg.poses[i + 1].pose.position.y
+                    ])
+                    current_point = np.array([
+                        path_msg.poses[i].pose.position.x,
+                        path_msg.poses[i].pose.position.y
+                    ])
+                    direction = next_point - current_point
+                else:
+                    prev_point = np.array([
+                        path_msg.poses[i - 1].pose.position.x,
+                        path_msg.poses[i - 1].pose.position.y
+                    ])
+                    current_point = np.array([
+                        path_msg.poses[i].pose.position.x,
+                        path_msg.poses[i].pose.position.y
+                    ])
+                    direction = current_point - prev_point
+                if np.linalg.norm(direction) < 1e-6:
+                    direction = np.array([math.cos(self.odom_yaw), math.sin(self.odom_yaw)], dtype=float)
+                yaw = math.atan2(direction[1], direction[0])
+                qz = math.sin(yaw / 2.0)
+                qw = math.cos(yaw / 2.0)
+                path_msg.poses[i].pose.orientation.z = qz
+                path_msg.poses[i].pose.orientation.w = qw
         
         self.path_pub.publish(path_msg)
 
