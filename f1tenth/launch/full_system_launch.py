@@ -86,7 +86,7 @@ def generate_launch_description():
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     PathJoinSubstitution([
-                        FindPackageShare('localizaiton'),
+                        FindPackageShare('localization'),
                         'launch',
                         'amcl_launch.py'
                     ])

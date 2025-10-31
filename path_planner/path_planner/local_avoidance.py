@@ -42,7 +42,7 @@ class LocalAvoidanceNode(Node):
         self.declare_parameter('lookahead_distance', 2.0)  # meters
         self.declare_parameter('safety_radius', 0.4)  # meters
         self.declare_parameter('output_topic', '/local_path')
-        self.declare_parameter('base_frame', 'ego_racecar/base_link')
+        self.declare_parameter('base_frame', '/base_link')
         self.declare_parameter('map_frame', 'map')
 
         # Read params

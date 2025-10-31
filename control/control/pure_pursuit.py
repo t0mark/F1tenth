@@ -30,8 +30,10 @@ class PurePursuitController(Node):
         self.declare_parameter('max_steering_angle', 0.4189)
         self.declare_parameter('path_topic', '/local_path')
         self.declare_parameter('fallback_path_topic', '/global_path')
-        self.declare_parameter('odom_topic', '/ego_racecar/odom')
+        self.declare_parameter('odom_topic', '/odom')
         self.declare_parameter('drive_topic', '/drive')
+        self.declare_parameter('v_min', 0.5)  # 기본값 0.5로 v_min 선언
+        self.declare_parameter('v_max', 1.5)  # 기본값 1.5로 v_max 선언
 
         # Get parameters
         self.lookahead_distance = self.get_parameter('lookahead_distance').value

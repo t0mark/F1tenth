@@ -13,7 +13,7 @@ local_planner:
     output_topic: '/local_path'
 
     # 프레임 설정
-    base_frame: 'ego_racecar/base_link'
+    base_frame: 'base_link'
     map_frame: 'map'
 
     # 경로 계획 파라미터

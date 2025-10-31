@@ -8,13 +8,13 @@ from launch_ros.actions import Node
 def generate_launch_description():
     # 기본 인자(시작값) — 이후 노드가 자동으로 조정함
     lookahead_arg = DeclareLaunchArgument('lookahead_distance', default_value='1.2')
-    speed_arg     = DeclareLaunchArgument('speed', default_value='6.0')
+    speed_arg     = DeclareLaunchArgument('speed', default_value='1.0')
     wheelbase_arg = DeclareLaunchArgument('wheelbase', default_value='0.3302')
     maxsteer_arg  = DeclareLaunchArgument('max_steering_angle', default_value='0.418879')  # 24°
 
     path_topic_arg      = DeclareLaunchArgument('path_topic', default_value='/local_path')
     fallback_topic_arg  = DeclareLaunchArgument('fallback_path_topic', default_value='/global_path')
-    odom_topic_arg      = DeclareLaunchArgument('odom_topic', default_value='/ego_racecar/odom')
+    odom_topic_arg      = DeclareLaunchArgument('odom_topic', default_value='/odom')
     drive_topic_arg     = DeclareLaunchArgument('drive_topic', default_value='/drive')
 
     # Adaptive 관련 인자(원하면 CLI로 조정)
