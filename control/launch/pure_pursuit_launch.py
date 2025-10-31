@@ -12,7 +12,7 @@ def generate_launch_description():
 
     path_topic_arg      = DeclareLaunchArgument('path_topic', default_value='/local_path')
     fallback_topic_arg  = DeclareLaunchArgument('fallback_path_topic', default_value='/global_path')
-    odom_topic_arg      = DeclareLaunchArgument('odom_topic', default_value='/ego_racecar/odom')
+    odom_topic_arg      = DeclareLaunchArgument('odom_topic', default_value='/odom')
     drive_topic_arg     = DeclareLaunchArgument('drive_topic', default_value='/drive')
 
     # Speed control parameters

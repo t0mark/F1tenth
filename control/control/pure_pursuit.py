@@ -31,7 +31,7 @@ class PurePursuitController(Node):
         self.declare_parameter('max_steering_angle', 0.4189)
         self.declare_parameter('path_topic', '/local_path')
         self.declare_parameter('fallback_path_topic', '/global_path')
-        self.declare_parameter('odom_topic', '/ego_racecar/odom')
+        self.declare_parameter('odom_topic', '/odom')
         self.declare_parameter('drive_topic', '/drive')
         self.declare_parameter('v_min', 1.3)
         self.declare_parameter('v_max', 5.0)
