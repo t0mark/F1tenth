@@ -42,7 +42,8 @@ bridge:
     scan_beams: 1080
 
     # map parameters
-    map_path: 'track'  # Map name without extension (actual path resolved in launch file)
+    # map_path: 'track'
+    map_path: 'obstacle_track'
     map_img_ext: '.pgm'
 
     # opponent parameters
