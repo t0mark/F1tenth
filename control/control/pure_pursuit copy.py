@@ -6,12 +6,9 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 
-import tf2_ros
-from tf2_geometry_msgs import do_transform_pose
-
 from nav_msgs.msg import Odometry, Path
 from ackermann_msgs.msg import AckermannDriveStamped
-from geometry_msgs.msg import PointStamped, PoseStamped
+from geometry_msgs.msg import PointStamped
 from visualization_msgs.msg import Marker
 
 
@@ -56,10 +53,6 @@ class PurePursuitController(Node):
         self.local_path_timeout = self.get_parameter('local_path_timeout').value
         self.control_rate_hz = self.get_parameter('control_rate_hz').value
         self.steer_smooth_alpha = self.get_parameter('steer_smooth_alpha').value
-        
-        # TF
-        self.tf_buffer = tf2_ros.Buffer()
-        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
         
         # State variables
         self.current_pose = None
@@ -120,27 +113,13 @@ class PurePursuitController(Node):
 
     def odom_callback(self, msg):
         """Update current vehicle pose from odometry"""
-        try:
-            transform = self.tf_buffer.lookup_transform('map', msg.header.frame_id, rclpy.time.Time())
-            
-            pose_stamped = PoseStamped()
-            pose_stamped.header = msg.header
-            pose_stamped.pose = msg.pose.pose
-            
-            transformed_pose = do_transform_pose(pose_stamped, transform)
-            self.current_pose = transformed_pose.pose
-            
-        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
-            self.get_logger().error(f'Could not transform pose: {e}')
+        self.current_pose = msg.pose.pose
 
     def path_callback(self, msg):
         """Local path callback"""
         if len(msg.poses) > 0:
             self.local_path = msg
             self.local_path_timestamp = self.get_clock().now()
-            self.get_logger().info(f'Received local path with {len(msg.poses)} poses.')
-            self.get_logger().info(f'First pose: {msg.poses[0].pose.position.x}, {msg.poses[0].pose.position.y}')
-            self.get_logger().info(f'Last pose: {msg.poses[-1].pose.position.x}, {msg.poses[-1].pose.position.y}')
 
     def fallback_path_callback(self, msg):
         """Global path callback"""
@@ -187,8 +166,6 @@ class PurePursuitController(Node):
             
         current_x = self.current_pose.position.x
         current_y = self.current_pose.position.y
-        self.get_logger().info(f'Current pose: ({current_x:.2f}, {current_y:.2f})')
-        self.get_logger().info(f'Lookahead distance: {lookahead_distance:.2f}')
         
         # Get vehicle heading for forward-looking search
         q = self.current_pose.orientation
@@ -213,8 +190,6 @@ class PurePursuitController(Node):
                 min_dist = dist
                 closest_idx = i
         
-        self.get_logger().info(f'Closest point index: {closest_idx}')
-
         # Search forward from closest point for lookahead distance
         for i in range(closest_idx, len(path.poses)):
             target_x = path.poses[i].pose.position.x
@@ -223,15 +198,12 @@ class PurePursuitController(Node):
             dx = target_x - current_x
             dy = target_y - current_y
             dist = math.sqrt(dx*dx + dy*dy)
-            self.get_logger().info(f'  - Checking point {i}: dist={dist:.2f}')
             
             if dist >= lookahead_distance:
-                self.get_logger().info(f'Target point found at index {i}')
                 return (target_x, target_y), i
         
         # If no point found at lookahead distance, use last point
         if len(path.poses) > 0:
-            self.get_logger().info('No target point found, using last point')
             last_pose = path.poses[-1].pose
             return (last_pose.position.x, last_pose.position.y), len(path.poses) - 1
             
