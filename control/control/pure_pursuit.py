@@ -103,13 +103,7 @@ class PurePursuitController(Node):
         # Control timer
         control_period = 1.0 / self.control_rate_hz
         self.control_timer = self.create_timer(control_period, self.control_loop)
-        
-        self.get_logger().info('Pure Pursuit Controller initialized')
-        self.get_logger().info(f'Adaptive speed: min={self.v_min} m/s, max={self.v_max} m/s')
-        self.get_logger().info(f'Adaptive lookahead: min={self.ld_min} m, max={self.ld_max} m')
-        self.get_logger().info(f'Control rate: {self.control_rate_hz} Hz')
-        self.get_logger().info(f'Steering smoothing: alpha={self.steer_smooth_alpha}')
-        self.get_logger().info('Local path priority enabled for steering control')
+    
 
     def odom_callback(self, msg):
         """Update current vehicle pose from global odometry (map frame)"""
@@ -121,9 +115,6 @@ class PurePursuitController(Node):
         if len(msg.poses) > 0:
             self.local_path = msg
             self.local_path_timestamp = self.get_clock().now()
-            self.get_logger().info(f'Received local path with {len(msg.poses)} poses.')
-            self.get_logger().info(f'First pose: {msg.poses[0].pose.position.x}, {msg.poses[0].pose.position.y}')
-            self.get_logger().info(f'Last pose: {msg.poses[-1].pose.position.x}, {msg.poses[-1].pose.position.y}')
 
     def fallback_path_callback(self, msg):
         """Global path callback"""
@@ -143,12 +134,10 @@ class PurePursuitController(Node):
             
             time_diff = (current_time - self.local_path_timestamp).nanoseconds / 1e9
             if time_diff < self.local_path_timeout:
-                # self.get_logger().debug('Using local path for steering control')
                 return self.local_path
         
         # Use global path as fallback
         if self.global_path is not None and len(self.global_path.poses) > 0:
-            # self.get_logger().debug('Using global path as fallback for steering control')
             return self.global_path
             
         return None
