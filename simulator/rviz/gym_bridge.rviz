@@ -66,8 +66,8 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 5.8139567375183105
-        Min Value: 1.4059808254241943
+        Max Value: 6.052238941192627
+        Min Value: 0.9458370804786682
         Value: true
       Axis: X
       Channel Name: intensity
@@ -272,7 +272,7 @@ Visualization Manager:
       Enabled: true
       History Length: 1
       Name: PointStamped
-      Radius: 0.20000000298023224
+      Radius: 0.5
       Topic:
         Depth: 5
         Durability Policy: Volatile
