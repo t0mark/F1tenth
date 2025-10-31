@@ -30,11 +30,11 @@ ekf_filter_node:
     # -----------------------------------------------------------------
     imu0: /camera/camera/imu
     imu0_config: [false, false, false,  # X, Y, Z
-                  false, false, true,   # Roll, Pitch, Yaw (True)
-                  false, false, false,  # vX, vY, vZ
-                  false, false, true,   # vRoll, vPitch, vYaw (True)
-                  true,  false, false]  # aX (True), aY (False), aZ (False)
-    imu0_differential: true
+                  false, false, false,  # Roll, Pitch, Yaw (True)
+                  true,  true,  true,   # vX, vY, vZ
+                  true,  true,  true,   # vRoll, vPitch, vYaw (True)
+                  false, false, false]  # aX (True), aY (False), aZ (False)
+    imu0_differential: false
     imu0_queue_size: 10
     imu0_remove_gravitational_acceleration: true
 

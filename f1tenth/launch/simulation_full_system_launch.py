@@ -38,7 +38,7 @@ def generate_launch_description():
 
     local_config_arg = DeclareLaunchArgument(
         'local_config',
-        default_value='local_avoidance.yaml',
+        default_value='local_sampler.yaml',
         description='로컬 플래너 설정 파일'
     )
 
@@ -62,9 +62,14 @@ def generate_launch_description():
                     PathJoinSubstitution([
                         FindPackageShare('path_planner'),
                         'launch',
-                        'sampler_launch.py'
+                        'path_planner_launch.py'
                     ])
-                )
+                ),
+                launch_arguments={
+                    'global_config': LaunchConfiguration('global_config'),
+                    'local_config': LaunchConfiguration('local_config'),
+                    'is_integrated': 'true'
+                }.items()
             )
         ]
     )

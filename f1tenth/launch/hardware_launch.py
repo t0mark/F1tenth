@@ -28,25 +28,6 @@ def generate_launch_description():
         ])
     )
 
-    neutral_ackermann = TimerAction(
-        period=1.0,
-        actions=[
-            ExecuteProcess(
-                cmd=[
-                    'ros2',
-                    'topic',
-                    'pub',
-                    '--once',
-                    '/ackermann_cmd',
-                    'ackermann_msgs/msg/AckermannDriveStamped',
-                    '{drive: {speed: 0.0, steering_angle: 0.0}}'
-                ],
-                output='screen'
-            )
-        ]
-    )
-
     return LaunchDescription([
-        f1tenth_bringup,
-        neutral_ackermann
+        f1tenth_bringup
     ])
