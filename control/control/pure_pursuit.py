@@ -174,21 +174,16 @@ class PurePursuitController(Node):
         return total_curvature / num_points
 
     def calculate_lookahead_from_curvature_and_speed(self, avg_curvature, current_speed):
-        """Calculate adaptive lookahead based on path curvature and current speed."""
+        """Calculate adaptive lookahead based on path curvature."""
         # 1. Calculate base lookahead from curvature (inverse non-linear relationship)
         curvature_factor = min(1.0, abs(avg_curvature) / self.max_curvature)
         base_ld = self.ld_max - pow(curvature_factor, self.curvature_exponent) * (self.ld_max - self.ld_min)
 
-        # 2. Adjust lookahead based on current speed
-        # Avoid division by zero if ref_velocity is not set
-        if self.ref_velocity > 0.1:
-            speed_ratio = current_speed / self.ref_velocity
-            adjusted_ld = base_ld * speed_ratio
-        else:
-            adjusted_ld = base_ld
+        # 2. The lookahead is determined solely by curvature, no longer adjusted by current speed.
+        # The 'current_speed' parameter is kept for compatibility but not used for adjustment.
 
         # 3. Clamp the final lookahead distance
-        final_ld = max(self.ld_min, min(self.ld_max, adjusted_ld))
+        final_ld = max(self.ld_min, min(self.ld_max, base_ld))
         return final_ld
 
     def calculate_speed_from_lookahead(self, lookahead_distance):
