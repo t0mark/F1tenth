@@ -62,6 +62,15 @@ def generate_launch_description():
         default_value='local_avoidance.yaml',
         description='로컬 플래너 설정 파일.'
     )
+    rviz_config_arg = DeclareLaunchArgument(
+        'rviz_config',
+        default_value=PathJoinSubstitution([
+            FindPackageShare('f1tenth'),
+            'rviz',
+            'f1tenth.rviz'
+        ]),
+        description='RViz 설정 파일 경로.'
+    )
 
     # 1. Map server (즉시 실행)
     map_server_launch = IncludeLaunchDescription(
@@ -110,9 +119,9 @@ def generate_launch_description():
         }]
     )
 
-    # 3. Path planner - localization 이후 4초 지연
+    # 3. Path planner - localization 이후 2초 지연
     path_planner_launch = TimerAction(
-        period=4.0,
+        period=2.0,
         actions=[
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
@@ -133,7 +142,7 @@ def generate_launch_description():
 
     # 4. Control - 경로 플래너 이후 6초 지연
     control_launch = TimerAction(
-        period=6.0,
+        period=2.0,
         actions=[
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
@@ -147,18 +156,12 @@ def generate_launch_description():
         ]
     )
 
-    rviz_config_path = PathJoinSubstitution([
-        FindPackageShare('f1tenth'),
-        'rviz',
-        'f1tenth.rviz'
-    ])
-
     rviz_node = Node(
         package='rviz2',
         executable='rviz2',
         name='f1tenth_rviz',
         output='screen',
-        arguments=['-d', rviz_config_path],
+        arguments=['-d', LaunchConfiguration('rviz_config')],
         parameters=[{
             'use_sim_time': LaunchConfiguration('use_sim_time'),
         }]
@@ -170,6 +173,7 @@ def generate_launch_description():
         map_topic_arg,
         global_config_arg,
         local_config_arg,
+        rviz_config_arg,
         map_server_launch,
         lifecycle_manager_node,
         localization_launch,
