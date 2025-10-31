@@ -128,7 +128,7 @@ def generate_launch_description():
                     PathJoinSubstitution([
                         FindPackageShare('path_planner'),
                         'launch',
-                        'sampler_launch.py'
+                        'path_planner_launch.py'
                     ])
                 )
             )
@@ -146,7 +146,12 @@ def generate_launch_description():
                         'launch',
                         'pure_pursuit_launch.py'
                     ])
-                )
+                ),
+                launch_arguments={
+                    'global_config': LaunchConfiguration('global_config'),
+                    'local_config': LaunchConfiguration('local_config'),
+                    'is_integrated': 'true'
+                }.items()
             )
         ]
     )
