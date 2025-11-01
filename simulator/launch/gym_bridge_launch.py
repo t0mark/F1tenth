@@ -143,6 +143,27 @@ def generate_launch_description():
         remappings=[('/robot_description', 'opp_robot_description')]
     )
 
+    # 조이스틱 텔레옵 구성 (실차와 동일한 joy/joy_teleop 설정 사용)
+    joy_teleop_config = os.path.join(
+        get_package_share_directory('f1tenth_stack'),
+        'config',
+        'joy_teleop.yaml'
+    )
+    joy_node = Node(
+        package='joy',
+        executable='joy_node',
+        name='joy',
+        parameters=[joy_teleop_config],
+        output='screen'
+    )
+    joy_teleop_node = Node(
+        package='joy_teleop',
+        executable='joy_teleop',
+        name='joy_teleop',
+        parameters=[joy_teleop_config],
+        output='screen'
+    )
+
     # 노드들을 런치 설명에 추가
     ## 맵 경로 인자 추가
     ld.add_action(map_path_arg)
@@ -155,6 +176,8 @@ def generate_launch_description():
 
     ## 상대 차량이 있는 경우에만 추가
     if has_opp:
+        ld.add_action(joy_node)
+        ld.add_action(joy_teleop_node)
         ld.add_action(opp_robot_publisher)
 
     return ld
