@@ -13,7 +13,7 @@ python3 src/path_planner/scripts/traj_file_generator.py
 
 <div style="text-align: center;">
   <div style="margin-bottom: 10px;">
-    <img src="src/path_planner/data/fitted_waypoints_speed_heatmap.png" width="100%">
+    <img src="/F1tenth/src/path_planner/data/fitted_waypoints_speed_heatmap.png" width="100%">
     <p>거리 정보 저장</p>
   </div>
 </div>
@@ -28,7 +28,7 @@ ros2 run path_planner centerline_logger_node
 ```
 <div style="text-align: center;">
   <div style="margin-bottom: 10px;">
-    <img src="src/path_planner/data/width_log_visualization.png" width="100%">
+    <img src="/F1tenth/src/path_planner/data/width_log_visualization.png" width="100%">
     <p>거리 정보 저장</p>
   </div>
 </div>
@@ -38,3 +38,9 @@ ros2 run path_planner centerline_logger_node
 ```
 python3 src/path_planner/scripts/width_left_right_creator.py
 ```
+<div style="text-align: center;">
+  <div style="margin-bottom: 10px;">
+    <img src="/F1tenth/src/path_planner/data/final_waypoints_visualization.png" width="100%">
+    <p>거리 정보 저장</p>
+  </div>
+</div>
