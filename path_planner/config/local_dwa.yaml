@@ -15,7 +15,6 @@ local_planner:
     base_frame: 'base_link'
     map_frame: 'map'
     publish_cmd_vel: false
-    cmd_topic: '/cmd_vel'
 
     costmap_size: 12.0
     costmap_resolution: 0.1

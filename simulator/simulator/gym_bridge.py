@@ -8,14 +8,24 @@ from geometry_msgs.msg import PoseWithCovarianceStamped
 from geometry_msgs.msg import Twist
 from geometry_msgs.msg import TransformStamped
 from geometry_msgs.msg import Transform
+from geometry_msgs.msg import PointStamped
 from ackermann_msgs.msg import AckermannDriveStamped
 from tf2_ros import TransformBroadcaster
+from tf2_ros import TransformListener
+from tf2_ros.buffer import Buffer
 from ament_index_python.packages import get_package_share_directory, PackageNotFoundError
 
 from pathlib import Path
 import gymnasium as gym
 import numpy as np
 from transforms3d import euler
+import math
+import xacro
+
+from visualization_msgs.msg import Marker, MarkerArray
+from tf2_geometry_msgs import do_transform_point
+from rclpy.time import Time
+from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy, QoSHistoryPolicy
 
 class GymBridge(Node):
     """
@@ -59,6 +69,9 @@ class GymBridge(Node):
             'sy1': 0.5,
             'stheta1': 0.0,
             'kb_teleop': True,
+            'obstacle_length': 0.12,
+            'obstacle_width': 0.1,
+            'obstacle_height': 0.2,
         }
 
         for name, default in default_params.items():
@@ -91,7 +104,31 @@ class GymBridge(Node):
         self.ego_steer = 0.0
         self.ego_collision = False
         self.ego_drive_published = False
-        
+        # 장애물 설정 (라이다 업데이트에서 참조하므로 환경 리셋 전에 초기화)
+        self.obstacle_length = float(self.get_parameter('obstacle_length').value)
+        self.obstacle_width = float(self.get_parameter('obstacle_width').value)
+        self.obstacle_height = float(self.get_parameter('obstacle_height').value)
+        self.obstacles = []
+        self.obstacle_seq = 0
+        self.scan_range_max = 30.0
+
+        simulator_share_dir = Path(get_package_share_directory('simulator'))
+        obstacle_xacro = simulator_share_dir / 'urdf' / 'obstacle.xacro'
+        try:
+            processed = xacro.process_file(
+                str(obstacle_xacro),
+                mappings={
+                    'obstacle_name': 'dynamic_obstacle',
+                    'length': str(self.obstacle_length),
+                    'width': str(self.obstacle_width),
+                    'height': str(self.obstacle_height),
+                }
+            )
+            self.obstacle_urdf = processed.toxml()
+        except Exception as exc:
+            self.get_logger().warn(f'failed to process obstacle xacro: {exc}')
+            self.obstacle_urdf = ''
+
         # 상대방 차량(opponent) 설정
         if self.num_agents == 2:
             self.has_opp = True
@@ -124,10 +161,19 @@ class GymBridge(Node):
 
         # TF 브로드캐스터
         self.br = TransformBroadcaster(self)
-        # 타이머: 시뮬레이션 스텝(100Hz) / 퍼블리시 루프(250Hz)
-        self.drive_timer = self.create_timer(0.01, self.drive_timer_callback)
-        self.timer = self.create_timer(0.004, self.timer_callback)
-        
+
+        # TF 버퍼 (RViz Publish Point에서 map 프레임으로 좌표 변환)
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
+
+        marker_qos = QoSProfile(
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=1,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+            reliability=QoSReliabilityPolicy.RELIABLE
+        )
+        self.obstacle_marker_pub = self.create_publisher(MarkerArray, 'obstacle', marker_qos)
+
         # 토픽 이름 설정
         ego_scan_topic = self.get_parameter('ego_scan_topic').value
         ego_drive_topic = self.get_parameter('ego_drive_topic').value
@@ -162,9 +208,16 @@ class GymBridge(Node):
             self.opp_reset_sub = self.create_subscription(
                 PoseStamped, '/goal_pose', self.opp_reset_callback, 10)
         
+        self.clicked_point_sub = self.create_subscription(
+            PointStamped, '/clicked_point', self.clicked_point_callback, 10)
+
         if self.get_parameter('kb_teleop').value:
             self.teleop_sub = self.create_subscription(
                 Twist, '/cmd_vel', self.teleop_callback, 10)
+
+        # 타이머: 시뮬레이션 스텝(100Hz) / 퍼블리시 루프(250Hz)
+        self.drive_timer = self.create_timer(0.01, self.drive_timer_callback)
+        self.timer = self.create_timer(0.004, self.timer_callback)
     
     def drive_callback(self, drive_msg):
         """
@@ -312,7 +365,12 @@ class GymBridge(Node):
             self.opp_speed[0] = float(self.obs['linear_vels_x'][1])
             self.opp_speed[1] = float(self.obs['linear_vels_y'][1])
             self.opp_speed[2] = float(self.obs['ang_vels_z'][1])
-    
+
+        if self.obstacles:
+            self.ego_scan = self._apply_obstacles_to_scan(self.ego_pose, self.ego_scan)
+            if self.has_opp:
+                self.opp_scan = self._apply_obstacles_to_scan(self.opp_pose, self.opp_scan)
+
     def _publish_laser_scan(self, ts):
         """
         라이다 스캔 데이터 퍼블리시
@@ -459,6 +517,154 @@ class GymBridge(Node):
             opp_wheel_ts.header.frame_id = self.opp_namespace + '/front_right_hinge'
             opp_wheel_ts.child_frame_id = self.opp_namespace + '/front_right_wheel'
             self.br.sendTransform(opp_wheel_ts)
+
+    def clicked_point_callback(self, point_msg: PointStamped):
+        """
+        RViz Publish Point를 이용해 전달된 좌표를 장애물로 추가.
+        """
+        target_frame = 'map'
+        point_in_map = point_msg
+
+        if point_msg.header.frame_id and point_msg.header.frame_id != target_frame:
+            try:
+                transform = self.tf_buffer.lookup_transform(
+                    target_frame,
+                    point_msg.header.frame_id,
+                    Time())
+                point_in_map = do_transform_point(point_msg, transform)
+            except Exception as exc:
+                self.get_logger().warn(f'clicked point transform failed: {exc}')
+                return
+
+        ox = float(point_in_map.point.x)
+        oy = float(point_in_map.point.y)
+        self._add_obstacle(ox, oy)
+
+    def _add_obstacle(self, x: float, y: float):
+        half_width = self.obstacle_width / 2.0
+        half_length = self.obstacle_length / 2.0
+        bounds = (x - half_width, x + half_width, y - half_length, y + half_length)
+        obstacle = {
+            'id': self.obstacle_seq,
+            'center': (x, y),
+            'bounds': bounds,
+            'height': self.obstacle_height,
+        }
+        self.obstacle_seq += 1
+        self.obstacles.append(obstacle)
+        self._publish_obstacle_markers()
+        self.get_logger().info(f'Added obstacle #{obstacle["id"]} at ({x:.2f}, {y:.2f})')
+
+    def _publish_obstacle_markers(self):
+        markers = MarkerArray()
+        stamp = self.get_clock().now().to_msg()
+
+        if not self.obstacles:
+            marker = Marker()
+            marker.action = Marker.DELETEALL
+            marker.header.frame_id = 'map'
+            marker.header.stamp = stamp
+            markers.markers.append(marker)
+            self.obstacle_marker_pub.publish(markers)
+            return
+
+        for obstacle in self.obstacles:
+            marker = Marker()
+            marker.header.frame_id = 'map'
+            marker.header.stamp = stamp
+            marker.ns = 'dynamic_obstacles'
+            marker.id = obstacle['id']
+            marker.type = Marker.CUBE
+            marker.action = Marker.ADD
+            marker.pose.position.x = obstacle['center'][0]
+            marker.pose.position.y = obstacle['center'][1]
+            marker.pose.position.z = obstacle['height'] / 2.0
+            marker.scale.x = self.obstacle_width
+            marker.scale.y = self.obstacle_length
+            marker.scale.z = self.obstacle_height
+            marker.color.r = 0.9
+            marker.color.g = 0.2
+            marker.color.b = 0.2
+            marker.color.a = 0.8
+            markers.markers.append(marker)
+
+        self.obstacle_marker_pub.publish(markers)
+
+    def _apply_obstacles_to_scan(self, pose, scan):
+        if not self.obstacles:
+            return scan
+
+        updated_scan = list(scan)
+        px, py, ptheta = pose
+        origin_x = px + math.cos(ptheta) * self.scan_distance_to_base_link
+        origin_y = py + math.sin(ptheta) * self.scan_distance_to_base_link
+
+        for idx, base_range in enumerate(scan):
+            beam_angle = ptheta + self.angle_min + idx * self.angle_inc
+            direction = (math.cos(beam_angle), math.sin(beam_angle))
+            current_range = base_range
+            if current_range <= 0.0 or math.isinf(current_range) or math.isnan(current_range):
+                current_range = self.scan_range_max
+            current_range = min(current_range, self.scan_range_max)
+
+            for obstacle in self.obstacles:
+                distance = self._ray_box_intersection(
+                    (origin_x, origin_y),
+                    direction,
+                    obstacle['bounds']
+                )
+                if distance is not None and distance < current_range:
+                    current_range = max(distance, 0.0)
+
+            updated_scan[idx] = float(current_range)
+
+        return updated_scan
+
+    @staticmethod
+    def _ray_box_intersection(origin, direction, bounds):
+        """
+        2D 축 정렬 박스(Ray vs AABB) 교차 거리 계산.
+        origin: (x, y), direction: (dx, dy), bounds: (min_x, max_x, min_y, max_y)
+        반환: 교차 거리 (없으면 None)
+        """
+        ox, oy = origin
+        dx, dy = direction
+        min_x, max_x, min_y, max_y = bounds
+
+        epsilon = 1e-9
+
+        if abs(dx) < epsilon:
+            if ox < min_x or ox > max_x:
+                return None
+            tx_min = -math.inf
+            tx_max = math.inf
+        else:
+            tx1 = (min_x - ox) / dx
+            tx2 = (max_x - ox) / dx
+            tx_min = min(tx1, tx2)
+            tx_max = max(tx1, tx2)
+
+        if abs(dy) < epsilon:
+            if oy < min_y or oy > max_y:
+                return None
+            ty_min = -math.inf
+            ty_max = math.inf
+        else:
+            ty1 = (min_y - oy) / dy
+            ty2 = (max_y - oy) / dy
+            ty_min = min(ty1, ty2)
+            ty_max = max(ty1, ty2)
+
+        t_enter = max(tx_min, ty_min)
+        t_exit = min(tx_max, ty_max)
+
+        if t_exit < 0 or t_enter > t_exit:
+            return None
+
+        if t_enter < 0.0:
+            return 0.0
+
+        return t_enter
 
     def _publish_laser_transforms(self, ts):
         """
