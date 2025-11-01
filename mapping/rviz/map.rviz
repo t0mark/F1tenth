@@ -102,37 +102,13 @@ Visualization Manager:
           Value: true
         laser:
           Value: true
-        map:
-          Value: true
-        odom:
-          Value: true
       Marker Scale: 1
       Name: TF
       Show Arrows: true
       Show Axes: true
       Show Names: false
       Tree:
-        map:
-          odom:
-            base_link:
-              camera_base_link:
-                camera_accel_frame:
-                  camera_accel_optical_frame:
-                    {}
-                camera_color_frame:
-                  camera_color_optical_frame:
-                    {}
-                camera_depth_frame:
-                  camera_depth_optical_frame:
-                    {}
-                camera_gyro_frame:
-                  camera_gyro_optical_frame:
-                    {}
-                  camera_imu_frame:
-                    camera_imu_optical_frame:
-                      {}
-              laser:
-                {}
+        {}
       Update Interval: 0
       Value: true
   Enabled: true
@@ -180,9 +156,9 @@ Visualization Manager:
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 4.1782307624816895
-        Y: 3.8124570846557617
-        Z: 0.894709587097168
+        X: 1.670638084411621
+        Y: 0.10829892754554749
+        Z: 0.20251686871051788
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
