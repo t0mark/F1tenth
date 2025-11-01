@@ -1,0 +1,42 @@
+amcl:
+  ros__parameters:
+    use_sim_time: false
+
+    # 모션 모델 (F1TENTH는 omni-directional에 가까움)
+    robot_model_type: "nav2_amcl::OmniMotionModel"
+
+    # 모션 모델 노이즈 파라미터
+    alpha1: 0.2
+    alpha2: 0.2
+    alpha3: 0.2
+    alpha4: 0.2
+    alpha5: 0.2
+
+    # 프레임 설정
+    base_frame_id: "base_link"
+    odom_frame_id: "odom"
+    global_frame_id: "map"
+    
+    # 센서 설정
+    scan_topic: /scan
+    laser_max_range: 20.0
+    laser_min_range: 0.1
+    
+    # 파티클 필터 설정
+    max_particles: 2000
+    min_particles: 500
+    pf_err: 0.05
+    pf_z: 0.99
+    
+    # 업데이트 설정
+    update_min_d: 0.25              # 0.25m 이동시 업데이트
+    update_min_a: 0.2               # 0.2 rad 회전시 업데이트
+    resample_interval: 1            # 매 스캔마다 리샘플링
+    transform_tolerance: 0.5        # TF 유효 시간 (초)
+    
+    # 초기 위치 설정
+    set_initial_pose: true
+    initial_pose_x: 0.0
+    initial_pose_y: 0.0
+    initial_pose_z: 0.0
+    initial_pose_yaw: 0.0
