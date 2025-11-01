@@ -8,7 +8,7 @@ package_name = 'path_planner'
 setup(
     name=package_name,
     version='0.1.0',
-    packages=[package_name, package_name + '.utils'],
+    packages=[package_name, package_name + '.utils', package_name + '.modules'],
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
@@ -36,6 +36,10 @@ setup(
             'extract_centerline = path_planner.utils.utils:extract_centerline_cli',
             'checkpoint_recorder_node = path_planner.utils.checkpoint_recorder:main',
             'centerline_logger_node = path_planner.centerline_logger:main',
+            'opponent_detection_node = path_planner.opponent_detection:main',
+            'spliner_node = path_planner.spliner:main',
+            'state_machine_node = path_planner.state_machine:main',
+            'controller_node = path_planner.controller:main',
         ],
     },
 )

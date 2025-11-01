@@ -22,8 +22,8 @@ import numpy as np
 import time
 from typing import List, Any, Tuple
 from scipy.interpolate import InterpolatedUnivariateSpline as Spline
-from modules.frenet_conversion import FrenetConverter
-from modules import utils
+from .modules.frenet_conversion import FrenetConverter
+from .modules import utils
 import os
 
 
@@ -43,7 +43,7 @@ class SplineNode(Node):
         )
 
         # 플롯 및 콘솔 디버깅을 위한 파라미터를 생성합니다.
-        self.declare_parameter('plot_debug', False)
+        self.declare_parameter('plot_debug', True)
         self.plot_debug = self.get_parameter('plot_debug').value
         self.declare_parameter('print_debug', False)
         self.print_debug = self.get_parameter('print_debug').value
@@ -114,7 +114,7 @@ class SplineNode(Node):
         self.post_apex_0 = 2.0
         self.post_apex_1 = 3.0
         self.post_apex_2 = 4.0
-        self.evasion_dist = 0.5
+        self.evasion_dist = 0.25  # 0.5에서 0.25로 축소하여 좁은 트랙에서 회피 가능하도록 조정
         self.obs_traj_tresh = 0.35
         self.spline_bound_mindist = 0.0
         self.fixed_pred_time = 0.15

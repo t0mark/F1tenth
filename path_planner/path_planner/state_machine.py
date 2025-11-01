@@ -16,7 +16,7 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped
 from f1tenth_icra_race_msgs.msg import ObstacleArray, OTWpntArray, WpntArray, Wpnt
 from visualization_msgs.msg import Marker, MarkerArray
-from modules import utils, frenet_conversion, state_helpers
+from .modules import utils, frenet_conversion, state_helpers
 from tf_transformations import euler_from_quaternion
 import os
 
@@ -74,7 +74,7 @@ class StateMachine(Node):
         self.converter = frenet_conversion.FrenetConverter(self.waypoints_x, self.waypoints_y, waypoints_psi)
 
         # 플롯 및 콘솔 디버깅을 위한 파라미터를 선언합니다.
-        self.declare_parameter('plot_debug', False)
+        self.declare_parameter('plot_debug', True)
         self.plot_debug = self.get_parameter('plot_debug').value
         self.declare_parameter('print_debug', False)
         self.print_debug = self.get_parameter('print_debug').value

@@ -2,8 +2,8 @@
 
 import logging
 import numpy as np
-from .utils import find_closest_index, sector_to_track_lengths_dict, sector_to_velocity_map, sector_to_lookahead_map
-from modules import state_helpers
+from .utils import find_closest_index
+from .state_helpers import StateType
 
 class PP_Controller:
     """자율주행을 위한 순수 추종(Pure Pursuit) 컨트롤러를 구현합니다.
@@ -17,9 +17,6 @@ class PP_Controller:
                 q_l1,
                 speed_lookahead,
                 lat_err_coeff,
-                # start_scale_speed,
-                # end_scale_speed,
-                # downscale_factor,
                 speed_lookahead_for_steer,
 
                 trailing_gap,
@@ -39,9 +36,6 @@ class PP_Controller:
         self.q_l1 = q_l1
         self.speed_lookahead = speed_lookahead
         self.lat_err_coeff = lat_err_coeff
-        # self.start_scale_speed = start_scale_speed
-        # self.end_scale_speed = end_scale_speed
-        # self.downscale_factor = downscale_factor
         self.speed_lookahead_for_steer = speed_lookahead_for_steer
 
         self.trailing_gap = trailing_gap
@@ -88,12 +82,12 @@ class PP_Controller:
         lat_e_norm, lateral_error = self.calc_lateral_error_norm()
 
         ### 종방향 제어 ###
-        self.speed_command, sector_idx = self.calc_speed_command(v, lat_e_norm)
+        self.speed_command = self.calc_speed_command(v, lat_e_norm)
         speed = self.speed_command
     
         ### 횡방향 제어 ###
         steering_angle = None
-        L1_point, L1_distance = self.calc_L1_point(lateral_error, sector_idx)
+        L1_point, L1_distance = self.calc_L1_point(lateral_error)
         
         if L1_point.any() is not None: 
             steering_angle = self.calc_steering_angle(L1_point, L1_distance, yaw, lat_e_norm, v)
@@ -117,7 +111,7 @@ class PP_Controller:
             steering_angle: 계산된 조향각
         """
         # 조향 지연을 보정하기 위한 루크어헤드 처리
-        if self.state == "StateType.TRAILING" and (self.opponent is not None):
+        if self.state == StateType.TRAILING and (self.opponent is not None):
             speed_la_for_lu = self.speed_now
         else:
             adv_ts_st = self.speed_lookahead_for_steer
@@ -135,21 +129,10 @@ class PP_Controller:
 
         steering_angle = np.arctan(2*self.wheelbase*np.sin(eta)/L1_distance)
 
-        # 속도 기반 조향 보정 예시
-        # steering_angle = self.speed_steer_scaling(steering_angle, speed_for_lu)
-
-        # # 속도를 이용한 조향 스케일링
-        # steering_angle *= np.clip(1 + (self.speed_now/10), 1, 1.25)
-        
-        # 조향각 변화량 제한 예시
-        # threshold = 0.4
-        # if abs(steering_angle - self.curr_steering_angle) > threshold:
-        #     self.logger_info(f"[PP Controller] steering angle clipped")
-        # steering_angle = np.clip(steering_angle, self.curr_steering_angle - threshold, self.curr_steering_angle + threshold) 
         self.curr_steering_angle = steering_angle
         return steering_angle
 
-    def calc_L1_point(self, lateral_error, sector_idx):
+    def calc_L1_point(self, lateral_error):
         """
         L1 포인트와 거리를 계산합니다.
         
@@ -158,57 +141,24 @@ class PP_Controller:
         Returns:
             L1_point: 차량 전방 L1 거리 지점
             L1_distance: L1 포인트까지의 거리
-            sector_idx: 트랙에서의 섹터 인덱스
         """
         
         self.idx_nearest_waypoint = self.nearest_waypoint(self.position_in_map[:2], self.waypoint_array_in_map[:, :2]) 
         
-        # 모든 웨이포인트가 동일하면 0으로 설정합니다.
         if np.isnan(self.idx_nearest_waypoint): 
             self.idx_nearest_waypoint = 0
 
         # L1 가이던스를 계산합니다.
-        # L1_distance = self.q_l1 + self.speed_now * self.m_l1
-        L1_distance = sector_to_lookahead_map[sector_idx]
-        if self.state == "StateType.OVERTAKE" and (self.opponent is not None):
+        L1_distance = self.q_l1 + self.speed_now * self.m_l1
+        if self.state == StateType.OVERTAKE and (self.opponent is not None):
             # 선두 차량이 앞에 있으면 상대와의 거리를 사용합니다.
             L1_distance = np.clip(self.opponent[0] - self.position_in_map_frenet[0] - 0.5, 1.0, L1_distance)
 
-        # 하한을 제한해 과도한 조향을 방지합니다.
-        # lower_bound = max(self.t_clip_min, np.sqrt(2)*lateral_error)
         lower_bound = self.t_clip_min
         L1_distance = np.clip(L1_distance, lower_bound, self.t_clip_max)
 
         L1_point = self.waypoint_at_distance_before_car(L1_distance, self.waypoint_array_in_map, self.idx_nearest_waypoint)
         return L1_point, L1_distance
-    
-
-    def find_global_speed(self, idx_nearest_waypoint):
-        """
-        최근접 웨이포인트 정보를 기반으로 전역 속도 레퍼런스를 계산합니다.
-
-        Returns:
-            global_speed: 차량이 따라야 할 전역 속도
-        """
-        s = self.waypoint_array_in_map[idx_nearest_waypoint, 3]
-        track_lengths_arr = list(sector_to_track_lengths_dict.values())
-        # s 이하에서 가장 큰 값을 갖는 인덱스를 찾습니다.
-        idx = find_closest_index(track_lengths_arr, s)
-        # 각 섹터별 누적 길이 배열은 구간의 끝점을 의미합니다.
-        # 따라서 s는 해당 섹터 끝값보다 작고 직전 섹터 값보다 큰 구간에 위치합니다.
-        # 이 s 값에 대응하는 섹터 인덱스를 찾아야 합니다.
-        if track_lengths_arr[idx] < s:
-            idx = idx + 1
-        
-        print(f"idx: {idx}, s: {s}")
-
-        # 인덱스에 해당하는 섹터를 구합니다.
-        sector = list(sector_to_track_lengths_dict.keys())[idx]
-
-        # 해당 섹터의 목표 속도를 가져옵니다.
-        global_speed = sector_to_velocity_map[sector]
-        return global_speed, sector
-    
     
     def calc_speed_command(self, v, lat_e_norm):
         """
@@ -225,16 +175,18 @@ class PP_Controller:
         adv_ts_sp = self.speed_lookahead
         la_position = [self.position_in_map[0] + v[0]*adv_ts_sp, self.position_in_map[1] + v[1]*adv_ts_sp]
         idx_la_position = self.nearest_waypoint(la_position, self.waypoint_array_in_map[:, :2])
-        # global_speed = self.waypoint_array_in_map[idx_la_position, 2]
-        global_speed, sector_idx = self.find_global_speed(idx_la_position)
-        if(self.state == "StateType.TRAILING" and (self.opponent is not None)):  # 추종 제어기
+        
+        # 웨이포인트에서 직접 목표 속도를 가져옵니다.
+        global_speed = self.waypoint_array_in_map[idx_la_position, 2]
+
+        if(self.state == StateType.TRAILING and (self.opponent is not None)):  # 추종 제어기
             speed_command = self.trailing_controller(global_speed)
         else:
             speed_command = global_speed
 
         speed_command = self.speed_adjust_lat_err(speed_command, lat_e_norm)
 
-        return speed_command, sector_idx
+        return speed_command
     
     def trailing_controller(self, global_speed):
         """
@@ -264,19 +216,6 @@ class PP_Controller:
             self.trailing_command = global_speed
 
         return self.trailing_command
-
-    # def speed_steer_scaling(self, steer, speed):
-    #     """
-    #     속도 기반으로 조향을 스케일링합니다.
-    #     고속 주행 시 조향량을 줄입니다.
-
-    #     Returns:
-    #         steer: 속도에 따라 조정된 조향각
-    #     """
-    #     speed_diff = max(0.1,self.end_scale_speed-self.start_scale_speed) # 0으로 나누는 상황을 방지합니다.
-    #     factor = 1 - np.clip((speed - self.start_scale_speed)/(speed_diff), 0.0, 1.0) * self.downscale_factor
-    #     steer *= factor
-    #     return steer
 
     def calc_lateral_error_norm(self):
         """

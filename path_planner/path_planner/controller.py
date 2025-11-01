@@ -12,9 +12,9 @@ from visualization_msgs.msg import Marker, MarkerArray
 from ackermann_msgs.msg import AckermannDriveStamped
 
 import numpy as np
-from modules.pure_pursuit import PP_Controller
-from modules import utils
-from modules.frenet_conversion import FrenetConverter
+from .modules.pure_pursuit import PP_Controller
+from .modules import utils
+from .modules.frenet_conversion import FrenetConverter
 from tf_transformations import euler_from_quaternion
 import os
 
@@ -35,11 +35,6 @@ class ControllerNode(Node):
         # self.waypoints_psi = utils.convert_psi(self.waypoints_psi)  # 필요 시 psi를 변환합니다.
         self.track_length = float(waypoints[-1, waypoint_cols['s_racetraj_m']])
         self.converter = FrenetConverter(self.waypoints_x, self.waypoints_y, self.waypoints_psi)
-        self.pose_sub = self.create_subscription(
-                Odometry,
-                '/odom',
-                self.pose_callback,
-                qos)
         
         qos = QoSProfile(
             depth=10,
@@ -48,6 +43,11 @@ class ControllerNode(Node):
             history=QoSHistoryPolicy.KEEP_LAST,
         )
 
+        self.pose_sub = self.create_subscription(
+                Odometry,
+                '/odom',
+                self.pose_callback,
+                qos)
         
         self.create_subscription(WpntArray, '/state_machine/local_waypoints', self.wpnts_callback, qos)
         self.create_subscription(String, '/state_machine/state', self.state_callback, qos)
@@ -59,7 +59,7 @@ class ControllerNode(Node):
         self.drive_pub = self.create_publisher(AckermannDriveStamped, drive_topic, qos)
 
         # 플롯 및 콘솔 디버깅을 위한 파라미터를 선언합니다.
-        self.declare_parameter('plot_debug', False)
+        self.declare_parameter('plot_debug', True)
         self.plot_debug = self.get_parameter('plot_debug').value
         self.declare_parameter('print_debug', False)
         self.print_debug = self.get_parameter('print_debug').value

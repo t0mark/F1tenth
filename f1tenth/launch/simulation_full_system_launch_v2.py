@@ -46,14 +46,14 @@ def generate_launch_description():
             # Obstacle Detection Node
             Node(
                 package='path_planner',
-                executable='opponent_detection.py',
+                executable='opponent_detection_node',
                 name='opponent_detection',
                 output='screen'
             ),
             # Spline Planner Node
             Node(
                 package='path_planner',
-                executable='spliner.py',
+                executable='spliner_node',
                 name='spline_node',
                 output='screen',
                 parameters=[{'waypoint_file': waypoint_file_path}]
@@ -61,7 +61,7 @@ def generate_launch_description():
             # State Machine Node
             Node(
                 package='path_planner',
-                executable='state_machine.py',
+                executable='state_machine_node',
                 name='state_machine',
                 output='screen',
                 parameters=[{'waypoint_file': waypoint_file_path}]
@@ -69,7 +69,7 @@ def generate_launch_description():
             # Controller Node
             Node(
                 package='path_planner',
-                executable='controller.py',
+                executable='controller_node',
                 name='controller',
                 output='screen',
                 parameters=[{'waypoint_file': waypoint_file_path}]
