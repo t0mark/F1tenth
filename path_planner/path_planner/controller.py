@@ -16,24 +16,31 @@ from modules.pure_pursuit import PP_Controller
 from modules import utils
 from modules.frenet_conversion import FrenetConverter
 from tf_transformations import euler_from_quaternion
+import os
 
 
 class ControllerNode(Node):
     def __init__(self):
         super().__init__('controller')
-        self.declare_parameter("waypoint_file", "/home/vaithak/Downloads/UPenn/F1Tenth/sim_ws/src/f1tenth_icra_race/waypoints/levine-practise-lane-optimal.csv")
+        waypoint_file = os.path.join('src/path_planner/data', 'final_waypoints.csv')
+        self.declare_parameter("waypoint_file", waypoint_file)
 
-        # Load local waypoint CSV file for reference track
+        # 기준 트랙 참고용 로컬 웨이포인트 CSV 파일을 불러옵니다.
         waypoint_file = self.get_parameter("waypoint_file").get_parameter_value().string_value
         waypoints = np.genfromtxt(waypoint_file, delimiter=';', skip_header=1)
         waypoint_cols = utils.column_numbers_for_waypoints()
         self.waypoints_x = waypoints[:, waypoint_cols['x_ref_m']]
         self.waypoints_y = waypoints[:, waypoint_cols['y_ref_m']]
         self.waypoints_psi = waypoints[:, waypoint_cols['psi_racetraj_rad']]
-        # self.waypoints_psi = utils.convert_psi(self.waypoints_psi)
+        # self.waypoints_psi = utils.convert_psi(self.waypoints_psi)  # 필요 시 psi를 변환합니다.
         self.track_length = float(waypoints[-1, waypoint_cols['s_racetraj_m']])
         self.converter = FrenetConverter(self.waypoints_x, self.waypoints_y, self.waypoints_psi)
-
+        self.pose_sub = self.create_subscription(
+                Odometry,
+                '/odom',
+                self.pose_callback,
+                qos)
+        
         qos = QoSProfile(
             depth=10,
             reliability=ReliabilityPolicy.RELIABLE,
@@ -41,54 +48,40 @@ class ControllerNode(Node):
             history=QoSHistoryPolicy.KEEP_LAST,
         )
 
-        # Subscriptions
-        self.declare_parameter("is_sim", True)
-        self.is_sim = self.get_parameter("is_sim").get_parameter_value().bool_value
-        if self.is_sim:
-            self.pose_sub = self.create_subscription(
-                Odometry,
-                '/ego_racecar/odom',
-                self.pose_callback,
-                qos)
-        else:
-            self.pose_sub = self.create_subscription(
-                Odometry,
-                '/pf/pose/odom',
-                self.pose_callback,
-                qos)
+        
         self.create_subscription(WpntArray, '/state_machine/local_waypoints', self.wpnts_callback, qos)
         self.create_subscription(String, '/state_machine/state', self.state_callback, qos)
         self.create_subscription(ObstacleArray, '/perception/obstacles', self.obstacles_callback, qos)
 
-        # Publisher for commands
+        # 주행 명령을 퍼블리시할 퍼블리셔를 설정합니다.
         self.declare_parameter('drive_topic', '/drive')
         drive_topic = self.get_parameter('drive_topic').value
         self.drive_pub = self.create_publisher(AckermannDriveStamped, drive_topic, qos)
 
-        # Create parameters for plot and print debugging
+        # 플롯 및 콘솔 디버깅을 위한 파라미터를 선언합니다.
         self.declare_parameter('plot_debug', False)
         self.plot_debug = self.get_parameter('plot_debug').value
         self.declare_parameter('print_debug', False)
         self.print_debug = self.get_parameter('print_debug').value
 
-        # Publisher for visualization
+        # 시각화용 퍼블리셔를 생성합니다.
         self.lookahead_pub = self.create_publisher(Marker, '/controller/lookahead_point', qos)
         self.l1_pub = self.create_publisher(Point, 'l1_distance', qos)
 
-        # Internal state
+        # 내부 상태 변수
         self.current_pose = None  # [x, y, yaw]
         self.current_pose_frenet = None  # [s, d, vs, vd]
         self.current_speed = 0.0
-        self.local_waypoints = []  # List of (x, y, v, s)
+        self.local_waypoints = []  # (x, y, v, s) 리스트
         self.opponent = None  # ObstacleMsg
         self.state = None  # StateType
 
-        # Timer loop
+        # 타이머 루프를 설정합니다.
         self.declare_parameter('rate_hz', 50.0)
         self.rate_hz = self.get_parameter('rate_hz').value
         self.timer = self.create_timer(1.0 / self.rate_hz, self.control_loop)
 
-        # Pure Pursuit Controller
+        # 순수 추종(Pure Pursuit) 컨트롤러 설정
         self.declare_parameter('t_clip_min', 1.0)
         self.declare_parameter('t_clip_max', 7.0)
         self.declare_parameter('q_l1', -0.65)
@@ -116,7 +109,7 @@ class ControllerNode(Node):
 
 
     def pose_callback(self, pose_msg):
-        # Get the current x, y position of the vehicle
+        # 차량의 현재 x, y 위치를 가져옵니다.
         pose = pose_msg.pose.pose
         yaw = euler_from_quaternion([
             pose.orientation.x,
@@ -127,13 +120,13 @@ class ControllerNode(Node):
         if self.print_debug:
             self.get_logger().info(f'Pose: {self.car_global_x}, {self.car_global_y}, {self.car_global_yaw}')
 
-        # Set the current speed
+        # 현재 속도를 설정합니다.
         self.current_speed = pose_msg.twist.twist.linear.x
 
-        # Set the current pose
+        # 현재 자세를 기록합니다.
         self.current_pose = [pose.position.x, pose.position.y, yaw]
 
-        # Convert the global coordinates to Frenet coordinates
+        # 전역 좌표를 프레네 좌표로 변환합니다.
         s, d = self.converter.get_frenet(np.array([pose.position.x]), np.array([pose.position.y]))
         vs, vd = self.converter.get_frenet_velocities(np.array([pose_msg.twist.twist.linear.x]), np.array([pose_msg.twist.twist.linear.y]), yaw)
         self.current_pose_frenet = [s[0], d[0], vs[0], vd[0]]
@@ -185,7 +178,7 @@ class ControllerNode(Node):
 
         speed, steering_angle = self.pure_pursuit_control_and_visualize()
 
-        # Publish the drive command
+        # 주행 명령을 퍼블리시합니다.
         drive_msg = AckermannDriveStamped()
         drive_msg.header.stamp = self.get_clock().now().to_msg()
         drive_msg.header.frame_id = 'base_link'
@@ -193,7 +186,7 @@ class ControllerNode(Node):
         drive_msg.drive.steering_angle = steering_angle
         self.drive_pub.publish(drive_msg)
 
-    ### Visualization methods
+    ### 시각화 관련 메서드
     def set_lookahead_marker(self, lookahead_point, id):
         lookahead_marker = Marker()
         lookahead_marker.header.frame_id = "map"

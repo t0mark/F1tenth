@@ -12,7 +12,7 @@ from sensor_msgs.msg import LaserScan
 import matplotlib.pyplot as plt
 
 # ROS 2에서 tf_transformations를 사용하려면 다음 명령으로 설치되어 있는지 확인하세요:
-#   sudo apt-get install ros-<your_distro>-tf-transformations
+#   sudo apt-get install ros-humble-tf-transformations
 from tf_transformations import euler_from_quaternion
 
 
@@ -72,8 +72,8 @@ class WaypointsLogger(Node):
         yaw = euler[2]  # 롤 = euler[0], 피치 = euler[1], 요 = euler[2]
 
         # -90도와 +90도 방향의 라이다 스캔 데이터 가져오기
-        index_1 = self.angle_to_index(-np.pi / 2, msg.angle_min, msg.angle_increment)
-        index_2 = self.angle_to_index(np.pi / 2, msg.angle_min, msg.angle_increment)
+        index_1 = self.angle_to_index(np.pi / 2, msg.angle_min, msg.angle_increment)
+        index_2 = self.angle_to_index(-np.pi / 2, msg.angle_min, msg.angle_increment)
         left_dist = msg.ranges[index_1]
         right_dist = msg.ranges[index_2]
 

@@ -24,7 +24,7 @@ class PathSamplerNode(Node):
         update_hz = self.get_parameter('update_hz').value
         self.lookahead_distance = self.get_parameter('lookahead_distance').value
         
-        # Publisher
+        # 퍼블리셔 설정
         self.path_pub = self.create_publisher(NavPath, '/local_path', 10)
         
         # Odometry 구독
@@ -43,7 +43,7 @@ class PathSamplerNode(Node):
         self.get_logger().info(f"Lookahead 거리: {self.lookahead_distance}m")
         self.get_logger().info("/odom 토픽을 사용해 로봇 위치를 추적합니다.")
         
-        # 타이머 (100Hz)
+        # 타이머 설정(100Hz)
         timer_period = 1.0 / update_hz
         self.timer = self.create_timer(timer_period, self.timer_callback)
         self._last_odom_warn_time = None
