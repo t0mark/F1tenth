@@ -149,7 +149,7 @@ def vehicle_dynamics_st(x, u_init, mu, C_Sf, C_Sr, lf, lr, h, m, I, s_min, s_max
     u = np.array([steering_constraint(x[2], u_init[0], s_min, s_max, sv_min, sv_max), accl_constraints(x[3], u_init[1], v_switch, a_max, v_min, v_max)])
 
     # switch to kinematic model for small velocities
-    if abs(x[3]) < 0.5:
+    if abs(x[3]) < 0.5 or x[3] <= 0.0:
         # wheelbase
         lwb = lf + lr
 
@@ -160,18 +160,24 @@ def vehicle_dynamics_st(x, u_init, mu, C_Sf, C_Sr, lf, lr, h, m, I, s_min, s_max
         0])))
 
     else:
+        speed = x[3]
+        speed_mag = np.abs(speed)
+        if speed_mag < 1e-3:
+            speed_mag = 1e-3  # keep denominators positive while handling near-zero speeds
+        speed_sign = 1.0 if speed >= 0.0 else -1.0
+
         # system dynamics
         f = np.array([x[3]*np.cos(x[6] + x[4]),
             x[3]*np.sin(x[6] + x[4]),
             u[0],
             u[1],
             x[5],
-            -mu*m/(x[3]*I*(lr+lf))*(lf**2*C_Sf*(g*lr-u[1]*h) + lr**2*C_Sr*(g*lf + u[1]*h))*x[5] \
+            -mu*m/(speed_mag*I*(lr+lf))*(lf**2*C_Sf*(g*lr-u[1]*h) + lr**2*C_Sr*(g*lf + u[1]*h))*x[5] \
                 +mu*m/(I*(lr+lf))*(lr*C_Sr*(g*lf + u[1]*h) - lf*C_Sf*(g*lr - u[1]*h))*x[6] \
                 +mu*m/(I*(lr+lf))*lf*C_Sf*(g*lr - u[1]*h)*x[2],
-            (mu/(x[3]**2*(lr+lf))*(C_Sr*(g*lf + u[1]*h)*lr - C_Sf*(g*lr - u[1]*h)*lf)-1)*x[5] \
-                -mu/(x[3]*(lr+lf))*(C_Sr*(g*lf + u[1]*h) + C_Sf*(g*lr-u[1]*h))*x[6] \
-                +mu/(x[3]*(lr+lf))*(C_Sf*(g*lr-u[1]*h))*x[2]])
+            (mu/(speed_mag**2*(lr+lf))*(C_Sr*(g*lf + u[1]*h)*lr - C_Sf*(g*lr - u[1]*h)*lf)-1)*x[5] \
+                -mu*speed_sign/(speed_mag*(lr+lf))*(C_Sr*(g*lf + u[1]*h) + C_Sf*(g*lr-u[1]*h))*x[6] \
+                +mu*speed_sign/(speed_mag*(lr+lf))*(C_Sf*(g*lr-u[1]*h))*x[2]])
 
     return f
 
