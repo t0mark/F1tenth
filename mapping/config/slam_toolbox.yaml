@@ -17,7 +17,7 @@ slam_toolbox:
     mode: mapping
     
     # 중요: EKF가 odom->base_link를 발행하므로 slam은 발행하지 않음
-    transform_publish_period: 0.02  # slam이 map->odom을 주기적으로 발행
+    transform_publish_period: 0.02
     
     # 매핑 설정
     map_update_interval: 5.0

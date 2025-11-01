@@ -5,10 +5,8 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Global Options1
-        - /TF1
-        - /TF1/Status1
       Splitter Ratio: 0.5
-    Tree Height: 915
+    Tree Height: 795
   - Class: rviz_common/SelectionPanel
     Name: Selection
   - Class: rviz_common/ToolPropertiesPanel
@@ -42,14 +40,14 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 10
-        Min Value: -10
+        Max Value: 0.10999999940395355
+        Min Value: 0.10999999940395355
         Value: true
       Axis: Z
       Channel Name: intensity
       Class: rviz_default_plugins/LaserScan
-      Color: 255; 255; 255
-      Color Transformer: Intensity
+      Color: 192; 28; 40
+      Color Transformer: AxisColor
       Decay Time: 0
       Enabled: true
       Invert Rainbow: false
@@ -61,7 +59,7 @@ Visualization Manager:
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 3
-      Size (m): 0.009999999776482582
+      Size (m): 0.10000000149011612
       Style: Flat Squares
       Topic:
         Depth: 5
@@ -80,6 +78,28 @@ Visualization Manager:
         All Enabled: true
         base_link:
           Value: true
+        camera_accel_frame:
+          Value: true
+        camera_accel_optical_frame:
+          Value: true
+        camera_base_link:
+          Value: true
+        camera_color_frame:
+          Value: true
+        camera_color_optical_frame:
+          Value: true
+        camera_depth_frame:
+          Value: true
+        camera_depth_optical_frame:
+          Value: true
+        camera_gyro_frame:
+          Value: true
+        camera_gyro_optical_frame:
+          Value: true
+        camera_imu_frame:
+          Value: true
+        camera_imu_optical_frame:
+          Value: true
         laser:
           Value: true
         map:
@@ -93,9 +113,26 @@ Visualization Manager:
       Show Names: false
       Tree:
         map:
-          base_link:
-            laser:
-              {}
+          odom:
+            base_link:
+              camera_base_link:
+                camera_accel_frame:
+                  camera_accel_optical_frame:
+                    {}
+                camera_color_frame:
+                  camera_color_optical_frame:
+                    {}
+                camera_depth_frame:
+                  camera_depth_optical_frame:
+                    {}
+                camera_gyro_frame:
+                  camera_gyro_optical_frame:
+                    {}
+                  camera_imu_frame:
+                    camera_imu_optical_frame:
+                      {}
+              laser:
+                {}
       Update Interval: 0
       Value: true
   Enabled: true
@@ -136,33 +173,33 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 9.679624557495117
+      Distance: 14.819421768188477
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 0
-        Y: 0
-        Z: 0
+        X: 4.1782307624816895
+        Y: 3.8124570846557617
+        Z: 0.894709587097168
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.2499998807907104
+      Pitch: 1.2949998378753662
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 1.5599994659423828
+      Yaw: 3.125009536743164
     Saved: ~
 Window Geometry:
   Displays:
     collapsed: false
-  Height: 1136
+  Height: 1016
   Hide Left Dock: false
   Hide Right Dock: false
-  QMainWindow State: 000000ff00000000fd00000001000000000000015600000416fc0200000004fb000000100044006900730070006c006100790073010000003d00000416000000c900fffffffb0000001200530065006c0065006300740069006f006e00000001d2000000d20000006e00fffffffb0000001e0054006f006f006c002000500072006f0070006500720074006900650073000000023b000001090000006e00fffffffb0000000a0056006900650077007300000002ed000001660000006e00ffffff000005de0000041600000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd0000000100000000000001560000039efc0200000004fb000000100044006900730070006c006100790073010000003d0000039e000000c900fffffffb0000001200530065006c0065006300740069006f006e00000001d2000000d20000006e00fffffffb0000001e0054006f006f006c002000500072006f0070006500720074006900650073000000023b000001090000006e00fffffffb0000000a0056006900650077007300000002ed000001660000006e00ffffff000005de0000039e00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Selection:
     collapsed: false
   Tool Properties:

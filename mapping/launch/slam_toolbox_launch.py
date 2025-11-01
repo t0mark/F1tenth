@@ -9,6 +9,7 @@ from ament_index_python.packages import get_package_share_directory
 def generate_launch_description():
     
     slam_config = os.path.join(get_package_share_directory('mapping'), 'config', 'slam_toolbox.yaml')
+    rviz_config = os.path.join(get_package_share_directory('mapping'), 'rviz', 'map.rviz')
     
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -32,6 +33,16 @@ def generate_launch_description():
             output='screen',
             parameters=[
                 slam_config,
+                {'use_sim_time': LaunchConfiguration('use_sim_time')}
+            ]
+        ),
+        Node(
+            package='rviz2',
+            executable='rviz2',
+            name='slam_toolbox_rviz',
+            arguments=['-d', rviz_config],
+            output='screen',
+            parameters=[
                 {'use_sim_time': LaunchConfiguration('use_sim_time')}
             ]
         ),
