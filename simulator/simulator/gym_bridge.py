@@ -22,10 +22,53 @@ from transforms3d import euler
 import math
 import xacro
 
+# Import for collision override
+from f110_gym.envs.base_classes import Simulator, RaceCar, Integrator
+
 from visualization_msgs.msg import Marker, MarkerArray
 from tf2_geometry_msgs import do_transform_point
 from rclpy.time import Time
 from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy, QoSHistoryPolicy
+
+class NoCollisionSimulator(Simulator):
+    """
+    Simulator 클래스를 상속받아 충돌 감지를 비활성화하는 클래스
+    """
+    
+    def __init__(self, params, num_agents, seed, time_step=0.01, ego_idx=0, integrator=None, lidar_dist=0.0):
+        """
+        기본 Simulator 초기화 후 agents를 NoCollisionRaceCar로 교체
+        """
+        super().__init__(params, num_agents, seed, time_step, ego_idx, integrator, lidar_dist)
+        
+        # 기존 agents를 NoCollisionRaceCar로 교체
+        self.agents = []
+        for i in range(self.num_agents):
+            if i == ego_idx:
+                ego_car = NoCollisionRaceCar(params, self.seed, is_ego=True, time_step=self.time_step, integrator=integrator, lidar_dist=lidar_dist)
+                self.agents.append(ego_car)
+            else:
+                agent = NoCollisionRaceCar(params, self.seed, is_ego=False, time_step=self.time_step, integrator=integrator, lidar_dist=lidar_dist)
+                self.agents.append(agent)
+    
+    def check_collision(self):
+        """
+        충돌 감지를 비활성화 - 항상 충돌 없음으로 설정
+        """
+        self.collisions = np.zeros((self.num_agents, ))
+        self.collision_idx = -1 * np.ones((self.num_agents, ))
+
+class NoCollisionRaceCar(RaceCar):
+    """
+    RaceCar 클래스를 상속받아 환경 충돌 감지를 비활성화하는 클래스
+    """
+    
+    def check_ttc(self, current_scan):
+        """
+        TTC 기반 충돌 감지를 비활성화 - 항상 충돌 없음으로 설정
+        """
+        self.in_collision = False
+        return False
 
 class GymBridge(Node):
     """
@@ -152,6 +195,31 @@ class GymBridge(Node):
             map=self.get_parameter('map_path').value,
             map_ext=self.get_parameter('map_img_ext').value,
             num_agents=self.num_agents)
+        
+        # 충돌 감지 비활성화를 위해 Simulator 교체
+        # Gymnasium wrapper를 unwrap하여 실제 환경에 접근
+        unwrapped_env = self.env.unwrapped
+        original_sim = unwrapped_env.sim
+        integrator_type = original_sim.agents[0].integrator if original_sim.agents else Integrator.RK4
+        lidar_dist = original_sim.agents[0].lidar_dist if original_sim.agents else 0.0
+        
+        # 새로운 시뮬레이터 생성 후 기존 맵 정보 복사
+        new_sim = NoCollisionSimulator(
+            original_sim.params, 
+            original_sim.num_agents, 
+            original_sim.seed, 
+            time_step=original_sim.time_step, 
+            ego_idx=original_sim.ego_idx,
+            integrator=integrator_type,
+            lidar_dist=lidar_dist
+        )
+        
+        # 기존 시뮬레이터에서 이미 로드된 맵 정보를 새 시뮬레이터로 복사
+        for i, agent in enumerate(new_sim.agents):
+            if i < len(original_sim.agents):
+                agent.scan_simulator = original_sim.agents[i].scan_simulator
+        
+        unwrapped_env.sim = new_sim
 
         if self.num_agents == 2:
             initial_poses = np.array([[sx, sy, stheta], [sx1, sy1, stheta1]], dtype=float)
