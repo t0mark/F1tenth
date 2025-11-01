@@ -16,13 +16,13 @@ def generate_launch_description():
     drive_topic_arg     = DeclareLaunchArgument('drive_topic', default_value='/drive')
 
     # Speed control parameters
-    vmin_arg   = DeclareLaunchArgument('v_min', default_value='0.8')
-    vmax_arg   = DeclareLaunchArgument('v_max', default_value='3.0')
+    vmin_arg   = DeclareLaunchArgument('v_min', default_value='0.5')
+    vmax_arg   = DeclareLaunchArgument('v_max', default_value='0.5')
     max_curvature_arg = DeclareLaunchArgument('max_curvature', default_value='0.8')
 
     # Lookahead parameters
     ld_min_arg = DeclareLaunchArgument('ld_min', default_value='0.5')
-    ld_max_arg = DeclareLaunchArgument('ld_max', default_value='2.5')
+    ld_max_arg = DeclareLaunchArgument('ld_max', default_value='1.0')
 
     # Control parameters
     ltimeout_arg = DeclareLaunchArgument('local_path_timeout', default_value='1.0')
