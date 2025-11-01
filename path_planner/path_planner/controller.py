@@ -7,7 +7,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, QoSDurabilityPolicy, QoSHis
 from nav_msgs.msg import Odometry
 from f1tenth_icra_race_msgs.msg import WpntArray, ObstacleArray
 from std_msgs.msg import String
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Point, PointStamped
 from visualization_msgs.msg import Marker, MarkerArray
 from ackermann_msgs.msg import AckermannDriveStamped
 
@@ -65,7 +65,7 @@ class ControllerNode(Node):
         self.print_debug = self.get_parameter('print_debug').value
 
         # 시각화용 퍼블리셔를 생성합니다.
-        self.lookahead_pub = self.create_publisher(Marker, '/controller/lookahead_point', qos)
+        self.lookahead_pub = self.create_publisher(PointStamped, '/controller/lookahead_point', qos)
         self.l1_pub = self.create_publisher(Point, 'l1_distance', qos)
 
         # 내부 상태 변수
@@ -188,26 +188,18 @@ class ControllerNode(Node):
 
     ### 시각화 관련 메서드
     def set_lookahead_marker(self, lookahead_point, id):
-        lookahead_marker = Marker()
-        lookahead_marker.header.frame_id = "map"
-        lookahead_marker.header.stamp = self.get_clock().now().to_msg()
-        lookahead_marker.type = 2
-        lookahead_marker.id = id
-        lookahead_marker.scale.x = 0.15
-        lookahead_marker.scale.y = 0.15
-        lookahead_marker.scale.z = 0.15
-        lookahead_marker.color.r = 1.0
-        lookahead_marker.color.g = 0.0
-        lookahead_marker.color.b = 0.0
-        lookahead_marker.color.a = 1.0
-        lookahead_marker.pose.position.x = lookahead_point[0]
-        lookahead_marker.pose.position.y = lookahead_point[1]
-        lookahead_marker.pose.position.z = 0.0
-        lookahead_marker.pose.orientation.x = 0.0
-        lookahead_marker.pose.orientation.y = 0.0
-        lookahead_marker.pose.orientation.z = 0.0
-        lookahead_marker.pose.orientation.w = 1.0
-        self.lookahead_pub.publish(lookahead_marker)
+        """
+        Lookahead 포인트를 PointStamped 메시지로 발행
+        RViz에서 크기 조절 가능하도록 PointStamped 사용
+        (Display Properties -> Size (m) 에서 크기 조절 가능)
+        """
+        lookahead_msg = PointStamped()
+        lookahead_msg.header.frame_id = "map"
+        lookahead_msg.header.stamp = self.get_clock().now().to_msg()
+        lookahead_msg.point.x = lookahead_point[0]
+        lookahead_msg.point.y = lookahead_point[1]
+        lookahead_msg.point.z = 0.0
+        self.lookahead_pub.publish(lookahead_msg)
 
 
 def main(args=None):

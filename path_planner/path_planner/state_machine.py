@@ -285,8 +285,20 @@ class StateMachine(Node):
                                 [s for s in range(0, s_end_idx + 1)]
 
             # Get the spline waypoints
-            for i, idx in enumerate(spline_idxs):
-                spline_glob[idx] = self.last_valid_avoidance_wpnts[min(i, len(self.last_valid_avoidance_wpnts) - 1)]
+            # s 좌표 기반으로 가장 가까운 회피 waypoint를 글로벌 경로에 매핑
+            # 글로벌 waypoint(~0.03m 간격)가 회피 waypoint(~0.25m 간격)보다 8배 촘촘하므로
+            # 각 글로벌 위치에 가장 가까운 회피 waypoint를 할당
+            for idx in spline_idxs:
+                # 현재 글로벌 waypoint의 s 좌표
+                current_s = self.wpnts_s_array[idx]
+
+                # 가장 가까운 회피 waypoint 찾기 (s 좌표 기반 nearest neighbor)
+                closest_avoid_idx = np.argmin(
+                    np.abs([wpnt.s_m - current_s for wpnt in self.last_valid_avoidance_wpnts])
+                )
+
+                # 해당 회피 waypoint로 교체
+                spline_glob[idx] = self.last_valid_avoidance_wpnts[closest_avoid_idx]
 
         # If the last valid points have been reset, then we just pass the global waypoints
         else:
