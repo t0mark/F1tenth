@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="dynamic_obstacle">
+
+  <xacro:property name="obstacle_name" value="dynamic_obstacle" />
+  <xacro:property name="length" value="0.12" />
+  <xacro:property name="width" value="0.1" />
+  <xacro:property name="height" value="0.2" />
+
+  <link name="${obstacle_name}/base_link">
+    <visual>
+      <geometry>
+        <box size="${width} ${length} ${height}"/>
+      </geometry>
+      <material name="obstacle_color">
+        <color rgba="0.9 0.2 0.2 0.8"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="${width} ${length} ${height}"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="1.0"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="0.01" ixy="0.0" ixz="0.0"
+               iyy="0.01" iyz="0.0"
+               izz="0.01" />
+    </inertial>
+  </link>
+
+</robot>
