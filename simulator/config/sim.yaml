@@ -46,8 +46,8 @@ bridge:
     # map_path: 'obstacle_track'
     map_img_ext: '.pgm'
 
-    # num_agent: 1
-    num_agent: 2
+    num_agent: 1
+    # num_agent: 2
 
     # ego starting pose on map
     sx: 0.0
