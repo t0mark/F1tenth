@@ -24,7 +24,7 @@ local_planner:
     robot_radius: 0.35
 
     sim_time: 2.0
-    sim_dt: 0.1
+    sim_dt: 0.02
     vx_samples: 6
     omega_samples: 11
 
