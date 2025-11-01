@@ -124,13 +124,13 @@ class SplineNode(Node):
                                  # - pre_apex_0과의 간격이 진입 급격도 결정
                                  # - 간격 좁을수록 급격한 초기 회피
 
-        self.pre_apex_2 = -0.75  # [m] 세 번째 진입점: 장애물 0.75m 앞, apex 직전
+        self.pre_apex_2 = -0.8  # [m] 세 번째 진입점: 장애물 0.75m 앞, apex 직전
                                  # - apex 바로 전 제어점으로 최종 회피 각도 결정
                                  # - 값이 0에 가까울수록 마지막 순간 급선회
 
         # apex (0m): 장애물과 나란히 있을 때 최대 횡방향 변위 지점 (자동 계산)
 
-        self.post_apex_0 = 0.75  # [m] 첫 번째 복귀점: 장애물 0.75m 뒤, 센터라인 복귀 시작
+        self.post_apex_0 = 0.8  # [m] 첫 번째 복귀점: 장애물 0.75m 뒤, 센터라인 복귀 시작
                                  # - 감소(예: 0.5) → 빠른 복귀, 공격적
                                  # - 증가(예: 1.5) → 늦은 복귀, 안전
 
@@ -160,7 +160,7 @@ class SplineNode(Node):
                                         # - 증가(예: 0.5) → 옆차선 장애물도 회피
                                         # abs(obstacle.d_center) < threshold 조건 사용
 
-        self.lookahead = 5.0            # [m] 전방 감지 거리 (몇 미터 앞 장애물까지 고려?)
+        self.lookahead = 6.0            # [m] 전방 감지 거리 (몇 미터 앞 장애물까지 고려?)
                                         # - 감소(예: 3.0) → 가까운 장애물만, 늦은 회피
                                         # - 증가(예: 7.0) → 먼 장애물도 감지, 이른 회피
                                         # ⚠️ 너무 크면 불필요한 회피, 너무 작으면 반응시간 부족
@@ -453,9 +453,10 @@ class SplineNode(Node):
                         )
                         danger_flag = True
                         break
-                # 전역 웨이포인트에서 속도를 가져오고 인사이드로 진입하면 감속합니다.
+                # 전역 웨이포인트에서 속도를 가져오고 추월 방향에 따라 스케일링합니다.
+                # 외측 추월: 1.25배 증속 (안전한 공간), 내측 추월: 0.8배 감속 (위험한 공간)
                 # TODO: 속도 스케일링을 ROS 파라미터로 노출합니다.
-                vi = self.waypoints_v[gb_wpnt_i] if outside == more_space else self.waypoints_v[gb_wpnt_i] * 0.8
+                vi = self.waypoints_v[gb_wpnt_i] * 1.25 if outside == more_space else self.waypoints_v[gb_wpnt_i] * 0.8
                 wpnts.wpnts.append(
                     self.xyv_to_wpnts(
                         x=resp[0, i], y=resp[1, i], s=evasion_s[i], d=evasion_d[i], v=vi, wpnts=wpnts)

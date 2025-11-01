@@ -18,7 +18,7 @@ def prune_points(points, distance_threshold=0.15):
             pruned_points.append(points[i])
     return np.array(pruned_points)
 
-def calculate_smooth_speed_profile(kappas, max_speed=4.0, min_speed=1.0, sigma=1):
+def calculate_smooth_speed_profile(kappas, max_speed=4.0, min_speed=1.0, sigma=5):
     """
     곡률 기반으로 속도 계산 후 가우시안 필터로 스무딩
     """
@@ -49,7 +49,7 @@ def FitPath(points):
     t = np.linspace(0, 1, len(x))
     cs_x = CubicSpline(t, x, bc_type='clamped')
     cs_y = CubicSpline(t, y, bc_type='clamped')
-    t_new = np.linspace(0, 1, len(x))
+    t_new = np.linspace(0, 1, 500)
     x_new = cs_x(t_new)
     y_new = cs_y(t_new)
 
