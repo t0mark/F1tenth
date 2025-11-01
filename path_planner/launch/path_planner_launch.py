@@ -128,7 +128,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'local_config',
-            default_value='local_sampler.yaml',
+            default_value='local_dwa.yaml',
             description='로컬 플래너 설정 파일 (파일명 또는 절대 경로)'
         ),
         DeclareLaunchArgument(
