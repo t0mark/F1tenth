@@ -35,6 +35,7 @@ setup(
             'local_dwa_node = path_planner.local_dwa:main',
             'extract_centerline = path_planner.utils.utils:extract_centerline_cli',
             'checkpoint_recorder_node = path_planner.utils.checkpoint_recorder:main',
+            'centerline_logger_node = path_planner.centerline_logger:main',
         ],
     },
 )
