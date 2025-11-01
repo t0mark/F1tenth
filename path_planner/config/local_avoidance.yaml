@@ -1,0 +1,26 @@
+# Local Avoidance Planner Configuration
+# LiDAR 기반 실시간 장애물 회피 경로 생성
+
+local_planner:
+  ros__parameters:
+    # 노드 설정
+    node_executable: 'local_avoidance_node'
+    node_name: 'local_avoidance_node'
+
+    # 토픽 설정
+    global_path_topic: '/global_path'
+    scan_topic: '/scan'
+    output_topic: '/local_path'
+
+    # 프레임 설정
+    base_frame: 'base_link'
+    map_frame: 'map'
+
+    # 경로 계획 파라미터
+    local_horizon: 10.0
+    path_resolution: 0.15
+    lookahead_distance: 2.5
+
+    # 장애물 회피 파라미터
+    lateral_offsets: [0.0, 0.3, -0.3, 0.5, -0.5]
+    safety_radius: 0.5

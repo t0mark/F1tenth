@@ -1,0 +1,20 @@
+cmake_minimum_required(VERSION 3.8)
+project(localization)
+
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 17)
+endif()
+
+find_package(ament_cmake REQUIRED)
+
+install(
+  DIRECTORY config launch
+  DESTINATION share/${PROJECT_NAME}
+)
+
+install(
+  PROGRAMS scripts/tf_to_odom.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+ament_package()
