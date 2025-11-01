@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 
-import rclpy
-from rclpy.node import Node
-from nav_msgs.msg import Odometry
 import numpy as np
 from numpy import linalg as LA
-from visualization_msgs.msg import MarkerArray, Marker
-
-MODE = 2
+import os # 파일 경로 조작을 위한 임포트
+from scipy.interpolate import CubicSpline
+from scipy.ndimage import gaussian_filter1d
+import matplotlib.pyplot as plt # 플로팅 및 PNG 저장을 위한 임포트
 
 def prune_points(points, distance_threshold=0.15):
     """
@@ -20,142 +18,132 @@ def prune_points(points, distance_threshold=0.15):
             pruned_points.append(points[i])
     return np.array(pruned_points)
 
+def calculate_smooth_speed_profile(kappas, max_speed=4.0, min_speed=1.0, sigma=5):
+    """
+    곡률 기반으로 속도 계산 후 가우시안 필터로 스무딩
+    """
+    if len(kappas) == 0 or np.all(kappas == 0):
+        return np.full(len(kappas), max_speed)
+        
+    max_kappa = np.max(np.abs(kappas))
+    
+    if max_kappa == 0:
+        return np.full(len(kappas), max_speed)
+
+    speeds = []
+    for kappa in kappas:
+        normalized_kappa = np.abs(kappa) / max_kappa
+        speed = max_speed - (normalized_kappa * (max_speed - min_speed))
+        speeds.append(max(min_speed, speed))
+    
+    smoothed_speeds = gaussian_filter1d(speeds, sigma=sigma)
+    
+    return np.array(smoothed_speeds)
+
 def FitPath(points):
     """
-    점은 (x, y, yaw) 형태로 전달됩니다.
+    (x, y) 점에 3차 스플라인을 맞추고, yaw, 곡률, 누적 거리, 속도를 계산합니다.
     """
-    if MODE == 1:
-        return points
-    elif MODE == 2:
-        # (x, y) 점에 3차 스플라인을 맞춥니다.
-        from scipy.interpolate import CubicSpline
-        # 반복 지점 수(repetition_points)를 2로 설정합니다.
-        # x = points[:-(repetition_points - 1), 0]
-        # y = points[:-(repetition_points - 1), 1]
-        x = points[:, 0]
-        y = points[:, 1]
-        t = np.linspace(0, 1, len(x))
-        cs_x = CubicSpline(t, x, bc_type='clamped')
-        cs_y = CubicSpline(t, y, bc_type='clamped')
-        t_new = np.linspace(0, 1, 500)
-        x_new = cs_x(t_new)
-        y_new = cs_y(t_new)
+    x = points[:, 0]
+    y = points[:, 1]
+    t = np.linspace(0, 1, len(x))
+    cs_x = CubicSpline(t, x, bc_type='clamped')
+    cs_y = CubicSpline(t, y, bc_type='clamped')
+    t_new = np.linspace(0, 1, 500)
+    x_new = cs_x(t_new)
+    y_new = cs_y(t_new)
 
-        # 점 간 거리가 0.2 이상인 경우만 남기도록 정리합니다.
-        # x_new, y_new = prune_points(np.column_stack((x_new, y_new)), distance_threshold=0.2).T
-        # print("정리 후 점 개수: ", len(x_new))
+    dx = np.gradient(x_new)
+    dy = np.gradient(y_new)
+    yaw_new = np.arctan2(dy, dx)
 
-        # 요 각도는 dy/dx = y'(t) / x'(t)로 계산합니다.
-        dx = np.gradient(x_new)
-        dy = np.gradient(y_new)
-        yaw_new = np.arctan2(dy, dx)
-        # yaw_new = np.unwrap(yaw_new)  # 불연속이 생기지 않도록 각도를 전개합니다.
+    kappa = np.zeros_like(x_new)
+    for i in range(1, len(x_new) - 1):
+        dx = x_new[i + 1] - x_new[i - 1]
+        dy = y_new[i + 1] - y_new[i - 1]
+        d2x = (x_new[i + 1] - 2 * x_new[i] + x_new[i - 1])
+        d2y = (y_new[i + 1] - 2 * y_new[i] + y_new[i - 1])
+        denominator = (dx ** 2 + dy ** 2) ** (3 / 2)
+        if denominator > 1e-6:
+            kappa[i] = (dx * d2y - dy * d2x) / denominator
+    kappa[0] = kappa[1]
+    kappa[-1] = kappa[-2]
 
-        # 각 지점의 곡률(kappa)을 계산합니다.
-        kappa = np.zeros_like(x_new)
-        for i in range(1, len(x_new) - 1):
-            dx = x_new[i + 1] - x_new[i - 1]
-            dy = y_new[i + 1] - y_new[i - 1]
-            d2x = (x_new[i + 1] - 2 * x_new[i] + x_new[i - 1])
-            d2y = (y_new[i + 1] - 2 * y_new[i] + y_new[i - 1])
-            kappa[i] = (dx * d2y - dy * d2x) / ((dx ** 2 + dy ** 2) ** (3 / 2))
-        kappa[0] = kappa[1]
-        kappa[-1] = kappa[-2]
+    s = np.zeros_like(x_new)
+    for i in range(1, len(x_new)):
+        s[i] = s[i - 1] + np.sqrt((x_new[i] - x_new[i - 1]) ** 2 + (y_new[i] - y_new[i - 1]) ** 2)
 
-        # 각 지점에 대한 `s` 값을 계산합니다.
-        s = np.zeros_like(x_new)
-        for i in range(1, len(x_new)):
-            s[i] = s[i - 1] + np.sqrt((x_new[i] - x_new[i - 1]) ** 2 + (y_new[i] - y_new[i - 1]) ** 2)
+    vx = calculate_smooth_speed_profile(kappa)
 
-        vx = np.zeros_like(x_new)
-        vx += 2.5 # 현재는 2.5 m/s로 설정되어 있으며, TODO: 개선 필요
+    return np.column_stack((x_new, y_new, yaw_new, s, kappa, vx))
 
-        return np.column_stack((x_new, y_new, yaw_new, s, kappa, vx))
+def visualize_path_to_png(waypoints, output_png_path):
+    plt.figure(figsize=(10, 8))
+    
+    # 속도 값을 색상 매핑에 사용합니다.
+    speeds = waypoints[:, 5] # vx_racetraj_mps 컬럼
+    min_speed = np.min(speeds)
+    max_speed = np.max(speeds)
+    
+    # 속도를 [0, 1] 범위로 정규화합니다.
+    norm_speed = (speeds - min_speed) / (max_speed - min_speed) if (max_speed - min_speed) > 0 else np.zeros_like(speeds)
+    
+    # 컬러맵을 생성합니다.
+    colormap = plt.get_cmap('viridis')
+    
+    # 각 세그먼트를 해당 색상으로 플로팅합니다.
+    for i in range(len(waypoints) - 1):
+        plt.plot(waypoints[i:i+2, 0], waypoints[i:i+2, 1], color=colormap(norm_speed[i]), linewidth=2)
+    
+    # 웨이포인트를 산점도로 표시하고 컬러바를 추가합니다.
+    plt.scatter(waypoints[:, 0], waypoints[:, 1], c=speeds, cmap='viridis', s=20, zorder=2)
+    plt.colorbar(label='Speed (m/s)')
+    plt.title('Fitted Waypoints Speed Heatmap')
+    plt.xlabel('X (m)')
+    plt.ylabel('Y (m)')
+    plt.grid(True)
+    plt.axis('equal') # x, y 축 스케일을 동일하게 유지
+    
+    plt.savefig(output_png_path)
+    print(f"경로 시각화가 다음 경로에 PNG 파일로 저장되었습니다: {output_png_path}")
+    plt.close() # 플롯을 닫아 메모리 해제
 
-class PathPlotter(Node):
-    """
-    웨이포인트가 담긴 CSV 파일 경로를 파라미터로 받아,
-    해당 웨이포인트를 읽어 MarkerArray로 시각화하여 퍼블리시합니다.
-    CSV 파일 형식은 다음과 같습니다.
-    x1, y1, yaw1, (speed1)? - 첫 번째 행, speed는 있을 수도 있고 없을 수도 있으며 앞의 3개 값만 추출합니다.
+def main():
+    # 입력 웨이포인트 파일 경로 (예: data/checkpoints.csv)
+    # 스크립트가 실행되는 위치를 기준으로 상대 경로를 사용합니다.
+    input_waypoint_file = os.path.join('src/path_planner/data', 'checkpoints.csv')
+    
+    # 파일 존재 여부 확인
+    if not os.path.exists(input_waypoint_file):
+        print(f"오류: 입력 웨이포인트 파일이 다음 경로에서 발견되지 않았습니다: {input_waypoint_file}")
+        print("스크립트를 실행하는 위치를 기준으로 'data' 폴더 안에 'checkpoints.csv' 파일이 있는지 확인하거나, 절대 경로를 제공하십시오.")
+        return
 
-    각 웨이포인트마다 위치 (x, y)와 쿼터니언으로 표현된 자세(yaw)를 가진 Marker를 생성합니다.
-    """
-    def __init__(self):
-        super().__init__('path_plotter')
+    # 웨이포인트 로드
+    # CSV 파일은 x, y 좌표만 포함한다고 가정합니다.
+    waypoints = np.genfromtxt(input_waypoint_file, delimiter=',', skip_header=1)
+    
+    # 닫힌 루프 트랙을 위해 첫 번째 점을 배열의 끝에 추가합니다.
+    waypoints = np.append(waypoints, [waypoints[0]], axis=0)
 
-        # 퍼블리셔를 생성합니다.
-        self.publisher = self.create_publisher(MarkerArray, '/visualization_marker_array', 10)
+    print(f"원본 웨이포인트 개수: {len(waypoints)}")
 
-        # 웨이포인트 파일을 지정하기 위한 ROS 2 파라미터를 생성합니다.
-        self.declare_parameter('waypoint_file', '/home/vaithak/Downloads/UPenn/F1Tenth/sim_ws/src/f1tenth_icra_race/waypoints/icra_race_2_interactive.csv')
-        waypoint_file = self.get_parameter('waypoint_file').value
-        self.waypoints = np.genfromtxt(waypoint_file, delimiter=',')
-        self.waypoints = self.waypoints
-        # 첫 번째 점을 배열의 끝에 추가합니다.
-        self.waypoints = np.append(self.waypoints, [self.waypoints[0]], axis=0)
+    # 웨이포인트에 곡선을 맞추고 속성 계산
+    fitted_waypoints = FitPath(waypoints)
 
-        # 웨이포인트에 곡선을 맞춥니다.
-        self.waypoints = FitPath(self.waypoints)
+    # 결과 CSV 파일 저장 경로 (예: src/path_planner/data/fitted_waypoints.csv)
+    output_csv_path = os.path.join('src/path_planner/data', 'fitted_waypoints.csv')
 
-        # MarkerArray를 생성합니다.
-        self.marker_array = MarkerArray()
-        self.marker_array.markers = []
+    # CSV 파일 헤더 정의
+    header = 'x_ref_m,y_ref_m,psi_racetraj_rad,s_racetraj_m,kappa_racetraj_radpm,vx_racetraj_mps'
+    
+    # CSV 파일로 저장
+    np.savetxt(output_csv_path, fitted_waypoints, delimiter=',', header=header, comments='', fmt='%.4f')
+    print(f"가공된 웨이포인트가 다음 경로에 저장되었습니다: {output_csv_path}")
 
-        print("Number of waypoints: ", len(self.waypoints))
-
-        # 각 웨이포인트에 대해 Marker를 생성합니다.
-        for i, waypoint in enumerate(self.waypoints):
-            marker = Marker()
-            marker.header.frame_id = "map"
-            marker.header.stamp = self.get_clock().now().to_msg()
-            marker.id = i
-            if len(self.waypoints) < 50:
-                marker.type = marker.ARROW
-            else:
-                marker.type = marker.SPHERE
-            marker.action = marker.ADD
-            marker.pose.position.x = waypoint[0]
-            marker.pose.position.y = waypoint[1]
-            marker.pose.position.z = 0.0
-            marker.pose.orientation.x = 0.0
-            marker.pose.orientation.y = 0.0
-            marker.pose.orientation.z = 0.0 # 필요 시 np.sin(waypoint[2] / 2)를 사용할 수 있습니다.
-            marker.pose.orientation.w = 1.0 # 필요 시 np.cos(waypoint[2] / 2)를 사용할 수 있습니다.
-            if len(self.waypoints) < 50:
-                marker.scale.x = 1.0
-            else:
-                marker.scale.x = 0.1
-            marker.scale.y = 0.1
-            marker.scale.z = 0.1
-            marker.color.a = 1.0
-            if MODE == 2:
-                marker.color.r = 1.0
-                marker.color.g = 0.0
-                marker.color.b = 0.0
-            elif MODE == 1:
-                marker.color.r = 0.0
-                marker.color.g = 1.0
-                marker.color.b = 0.0
-            self.marker_array.markers.append(marker)
-
-        # MarkerArray를 퍼블리시합니다.
-        self.publisher.publish(self.marker_array)
-
-        # 점 데이터를 CSV 파일로 저장합니다.
-        if MODE == 2:
-            save_path = '/home/vaithak/Downloads/UPenn/F1Tenth/sim_ws/src/f1tenth_icra_race/waypoints/icra_race_2_interactive_fitted.csv'
-            # CSV 파일에 헤더를 추가합니다.
-            header = 'x_ref_m,y_ref_m,psi_racetraj_rad,s_racetraj_m,kappa_racetraj_radpm,vx_racetraj_mps'
-            np.savetxt(save_path, self.waypoints, delimiter=',', header=header, comments='', fmt='%.4f')
-
-def main(args=None):
-    rclpy.init(args=args)
-    path_plotter = PathPlotter()
-    rclpy.spin(path_plotter)
-    path_plotter.destroy_node()
-    rclpy.shutdown()
+    # 경로 시각화를 PNG 파일로 저장
+    output_png_path = os.path.join('src/path_planner/data', 'fitted_waypoints_speed_heatmap.png')
+    visualize_path_to_png(fitted_waypoints, output_png_path)
 
 if __name__ == '__main__':
     main()
-
