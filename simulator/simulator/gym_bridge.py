@@ -56,6 +56,7 @@ class GymBridge(Node):
             'opp_ego_odom_topic': 'opp_odom',
             'opp_scan_topic': 'opp_scan',
             'opp_drive_topic': 'opp_drive',
+            'opp_teleop_topic': 'teleop',
             'scan_distance_to_base_link': 0.0,
             'scan_fov': 4.7,
             'scan_beams': 1080,
@@ -207,6 +208,9 @@ class GymBridge(Node):
                 AckermannDriveStamped, opp_drive_topic, self.opp_drive_callback, 10)
             self.opp_reset_sub = self.create_subscription(
                 PoseStamped, '/goal_pose', self.opp_reset_callback, 10)
+            opp_teleop_topic = self.get_parameter('opp_teleop_topic').value
+            self.opp_teleop_sub = self.create_subscription(
+                AckermannDriveStamped, opp_teleop_topic, self.opp_teleop_callback, 10)
         
         self.clicked_point_sub = self.create_subscription(
             PointStamped, '/clicked_point', self.clicked_point_callback, 10)
@@ -238,6 +242,13 @@ class GymBridge(Node):
         self.opp_requested_speed = drive_msg.drive.speed
         self.opp_steer = drive_msg.drive.steering_angle
         self.opp_drive_published = True
+
+    def opp_teleop_callback(self, drive_msg):
+        """
+        조이스틱 텔레옵 콜백
+        - 목적: 텔레옵 토픽을 통해 상대 차량 제어
+        """
+        self.opp_drive_callback(drive_msg)
 
     def teleop_callback(self, twist_msg):
         """
@@ -314,13 +325,19 @@ class GymBridge(Node):
         - 주기: 0.01s (100 Hz)
         - (ego_drive_published 플래그) 최초 명령 수신 전에는 스텝을 진행 X
         """
-        if self.ego_drive_published and not self.has_opp:
-            step_action = np.array([[self.ego_steer, self.ego_requested_speed]], dtype=np.float32)
-            self.obs, _, self.terminated, self.truncated, _ = self.env.step(step_action)
-        elif self.ego_drive_published and self.has_opp and self.opp_drive_published:
-            step_action = np.array([[self.ego_steer, self.ego_requested_speed],
-                                    [self.opp_steer, self.opp_requested_speed]], dtype=np.float32)
-            self.obs, _, self.terminated, self.truncated, _ = self.env.step(step_action)
+        if not self.has_opp:
+            if self.ego_drive_published:
+                step_action = np.array([[self.ego_steer, self.ego_requested_speed]], dtype=np.float32)
+                self.obs, _, self.terminated, self.truncated, _ = self.env.step(step_action)
+        else:
+            if self.ego_drive_published or self.opp_drive_published:
+                ego_speed = self.ego_requested_speed if self.ego_drive_published else 0.0
+                ego_steer = self.ego_steer if self.ego_drive_published else 0.0
+                opp_speed = self.opp_requested_speed if self.opp_drive_published else 0.0
+                opp_steer = self.opp_steer if self.opp_drive_published else 0.0
+                step_action = np.array([[ego_steer, ego_speed],
+                                        [opp_steer, opp_speed]], dtype=np.float32)
+                self.obs, _, self.terminated, self.truncated, _ = self.env.step(step_action)
         self._update_sim_state()
 
     def timer_callback(self):
