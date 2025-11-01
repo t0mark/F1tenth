@@ -46,7 +46,7 @@ import os
 import math
 import time
 from typing import List
-import modules.utils as utils
+from .modules import utils
 
 # === 서드파티 수치 라이브러리 ===
 import numpy as np
@@ -74,7 +74,7 @@ from filterpy.common import Q_discrete_white_noise
 from scipy.linalg import block_diag
 
 # === 로컬 헬퍼 ===
-from modules.frenet_conversion import FrenetConverter
+from .modules.frenet_conversion import FrenetConverter
 
 # ---------------------------------------------------------------------------
 # 유틸리티 함수

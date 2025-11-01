@@ -7,7 +7,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallb
 from rcl_interfaces.msg import ParameterDescriptor
 
 import time
-from modules.frenet_conversion import FrenetConverter
+from .modules.frenet_conversion import FrenetConverter
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Float32
 from bisect import bisect_left
@@ -17,7 +17,7 @@ import numpy as np
 from tf_transformations import quaternion_from_euler
 from tf_transformations import euler_from_quaternion
 from typing import List, Tuple
-import modules.utils as utils
+from .modules import utils
 from f1tenth_icra_race_msgs.msg import ObstacleArray, ObstacleMsg
 
 from visualization_msgs.msg import Marker, MarkerArray
@@ -56,7 +56,7 @@ class OpponentDetection(Node):
 
     구독 토픽:
         - `/scan`: 라이다 스캔
-        - '/ego_racecar/odom' 또는 '/pf/pose/odom': 자차의 오도메트리
+        - '/odom' : 자차의 오도메트리 (시뮬레이션 동일)
 
     발행 토픽:
         - `/breakpoints_markers`: 장애물 경계 마커
@@ -78,7 +78,7 @@ class OpponentDetection(Node):
         # 시뮬레이션 실행 여부를 확인하는 파라미터를 선언합니다.
 
         # 플롯 및 콘솔 디버깅을 위한 파라미터를 생성합니다.
-        self.declare_parameter('plot_debug', False)
+        self.declare_parameter('plot_debug', True)
         self.plot_debug = self.get_parameter('plot_debug').value
         self.declare_parameter('print_debug', False)
         self.print_debug = self.get_parameter('print_debug').value
@@ -96,7 +96,7 @@ class OpponentDetection(Node):
 
         # 라이다 스캔 토픽 구독자를 생성합니다.
         scan_topic = '/scan'
-        self.laser_frame = '/laser' if self.is_sim else 'laser'
+        self.laser_frame = 'laser'
         self.laser_sub = self.create_subscription(
             LaserScan,
             scan_topic,
@@ -135,7 +135,7 @@ class OpponentDetection(Node):
                 MarkerArray, '/perception/obstacles_markers_new', 5)
     
         self.obstacles_msg_pub = self.create_publisher(
-            ObstacleArray, '/perception/detection/raw_obstacles', 5)            
+            ObstacleArray, '/perception/obstacles', 5)            
 
         self.declare_parameter("rate", 40, descriptor=ParameterDescriptor(
             description="rate at which the node is running"))
@@ -509,41 +509,69 @@ class OpponentDetection(Node):
         self.get_logger().debug(
             f"[Opponent Detection] tracking {len(self.tracked_obstacles)} obstacles.")
 
-    def publishObstaclesMessage(self):
+    def publishObstaclesMessage(self, tracked_obstacles):
         obstacles_array_message = ObstacleArray()
         obstacles_array_message.header.stamp = self.get_clock().now().to_msg()
         obstacles_array_message.header.frame_id = "map"
 
+        if not tracked_obstacles:
+            self.obstacles_msg_pub.publish(obstacles_array_message)
+            return
+
         x_center = []
         y_center = []
-        for obstacle in self.tracked_obstacles:
+        for obstacle in tracked_obstacles:
             x_center.append(obstacle.center_x)
             y_center.append(obstacle.center_y)
 
-        s_points, d_points = self.frenet_converter.get_frenet(
+        frenet_result = self.frenet_converter.get_frenet(
             np.array(x_center), np.array(y_center))
 
-        for idx, obstacle in enumerate(self.tracked_obstacles):
-            s = s_points[idx]
-            d = d_points[idx]
+        # Frenet 변환 결과 검증
+        if frenet_result.shape[0] != 2:
+            self.get_logger().warn("Frenet conversion returned invalid shape")
+            self.obstacles_msg_pub.publish(obstacles_array_message)
+            return
+
+        # 결과를 1D 배열로 정규화
+        if frenet_result.ndim == 1:
+            # 단일 점: shape (2,) -> (2, 1)
+            s_points = np.array([frenet_result[0]])
+            d_points = np.array([frenet_result[1]])
+        else:
+            # 다중 점: shape (2, n)
+            s_points = frenet_result[0]
+            d_points = frenet_result[1]
+
+        # 배열 크기 검증
+        if len(s_points) != len(tracked_obstacles):
+            self.get_logger().warn(
+                f"Size mismatch: obstacles={len(tracked_obstacles)}, frenet_points={len(s_points)}")
+            self.obstacles_msg_pub.publish(obstacles_array_message)
+            return
+
+        for idx, obstacle in enumerate(tracked_obstacles):
+            # numpy scalar을 python float로 명시적 변환
+            s = float(s_points[idx])
+            d = float(d_points[idx])
 
             obsMsg = ObstacleMsg()
             obsMsg.id = obstacle.id
-            obsMsg.s_start = s-obstacle.size/2
-            obsMsg.s_end = s+obstacle.size/2
-            obsMsg.d_left = d+obstacle.size/2
-            obsMsg.d_right = d-obstacle.size/2
+            obsMsg.s_start = float(s - obstacle.size/2)
+            obsMsg.s_end = float(s + obstacle.size/2)
+            obsMsg.d_left = float(d + obstacle.size/2)
+            obsMsg.d_right = float(d - obstacle.size/2)
             obsMsg.s_center = s
             obsMsg.d_center = d
-            obsMsg.size = obstacle.size
+            obsMsg.size = float(obstacle.size)
 
             obstacles_array_message.obstacles.append(obsMsg)
 
         self.obstacles_msg_pub.publish(obstacles_array_message)
 
-    def publishObstaclesMarkers(self):
+    def publishObstaclesMarkers(self, tracked_obstacles):
         markers_array = []
-        for obs in self.tracked_obstacles:
+        for obs in tracked_obstacles:
             marker = Marker()
             marker.header.frame_id = "map"
             marker.header.stamp = self.get_clock().now().to_msg()
@@ -593,9 +621,11 @@ class OpponentDetection(Node):
         current_obstacles = self.obsPointClouds2obsArray(objects_pointcloud_list)
         self.checkObstacles(current_obstacles)
 
-        self.publishObstaclesMessage()
+        obstacles = list(self.tracked_obstacles)
+
+        self.publishObstaclesMessage(obstacles)
         if self.plot_debug:
-            self.publishObstaclesMarkers()
+            self.publishObstaclesMarkers(obstacles)
 
         if self.print_debug:
             end_time = time.perf_counter()
