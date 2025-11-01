@@ -6,8 +6,8 @@ from .utils import find_closest_index, sector_to_track_lengths_dict, sector_to_v
 from modules import state_helpers
 
 class PP_Controller:
-    """This class implements a Pure Pursuit controller for autonomous driving.
-    Input and output topics are managed by the controller manager
+    """자율주행을 위한 순수 추종(Pure Pursuit) 컨트롤러를 구현합니다.
+    입출력 토픽은 컨트롤러 매니저에서 관리합니다.
     """
 
     def __init__(self, 
@@ -26,13 +26,13 @@ class PP_Controller:
                 trailing_p_gain,
                 trailing_d_gain,
 
-                wheelbase = 0.15875 + 0.17145, # F1Tenth
+                wheelbase = 0.15875 + 0.17145, # F1Tenth 기준
                 
                 logger_info = logging.info,
                 logger_warn = logging.warn
             ):
         
-        # Parameters from manager
+        # 매니저에서 전달되는 파라미터
         self.t_clip_min = t_clip_min
         self.t_clip_max = t_clip_max
         self.m_l1 = m_l1
@@ -48,13 +48,13 @@ class PP_Controller:
         self.trailing_p_gain = trailing_p_gain
         self.trailing_d_gain = trailing_d_gain
 
-        # lwb = lf + lr, lf = front axle, lr = rear axle
-        # For F1Tenth, 'lf': 0.15875, 'lr': 0.17145
+        # lwb = lf + lr, lf는 전륜, lr은 후륜입니다.
+        # F1Tenth의 경우 lf = 0.15875, lr = 0.17145입니다.
         self.wheelbase = wheelbase
 
-        # Parameters in the controller
+        # 컨트롤러 내부 상태 파라미터
         self.curr_steering_angle = 0
-        self.idx_nearest_waypoint = None # index of nearest waypoint to car
+        self.idx_nearest_waypoint = None  # 차량에 가장 가까운 웨이포인트 인덱스
         self.track_length = None
 
         self.gap = None
@@ -70,9 +70,9 @@ class PP_Controller:
         self.logger_info = logger_info
         self.logger_warn = logger_warn
 
-    # main loop    
+    # 메인 루프
     def main_loop(self, state, position_in_map, waypoint_array_in_map, speed_now, opponent, position_in_map_frenet, track_length):
-        # Updating parameters from manager
+        # 매니저로부터 전달된 값을 갱신합니다.
         self.state = state
         self.position_in_map = position_in_map
         self.waypoint_array_in_map = waypoint_array_in_map
@@ -80,18 +80,18 @@ class PP_Controller:
         self.opponent = opponent
         self.position_in_map_frenet = position_in_map_frenet
         self.track_length = track_length
-        ## PREPROCESS ##
-        # speed vector
+        ## 전처리 ##
+        # 속도 벡터
         yaw = self.position_in_map[2]
         v = [np.cos(yaw)*self.speed_now, np.sin(yaw)*self.speed_now] 
 
         lat_e_norm, lateral_error = self.calc_lateral_error_norm()
 
-        ### LONGITUDINAL CONTROL ###
+        ### 종방향 제어 ###
         self.speed_command, sector_idx = self.calc_speed_command(v, lat_e_norm)
         speed = self.speed_command
     
-        ### LATERAL CONTROL ###
+        ### 횡방향 제어 ###
         steering_angle = None
         L1_point, L1_distance = self.calc_L1_point(lateral_error, sector_idx)
         
@@ -103,22 +103,20 @@ class PP_Controller:
         return speed, steering_angle, L1_point, L1_distance, self.idx_nearest_waypoint
     
     def calc_steering_angle(self, L1_point, L1_distance, yaw, lat_e_norm, v):
-        """ 
-        The purpose of this function is to calculate the steering angle based on the L1 point, desired lateral acceleration and velocity
+        """
+        L1 포인트, 목표 횡가속도, 속도를 바탕으로 조향각을 계산합니다.
 
         Inputs:
-            L1_point: point at L1 distance in front of the car
-            L1_distance: distance of the L1 point to the car
-            yaw: yaw angle of the car
-            lat_e_norm: normed lateral error
-            v : speed vector
+            L1_point: 차량 전방 L1 거리 지점
+            L1_distance: 차량과 L1 포인트 사이 거리
+            yaw: 차량의 요 각도
+            lat_e_norm: 정규화된 횡방향 오차
+            v : 속도 벡터
 
         Returns:
-            steering_angle: calculated steering angle
-
-        
+            steering_angle: 계산된 조향각
         """
-        # lookahead for steer (steering delay incorporation by propagating position)
+        # 조향 지연을 보정하기 위한 루크어헤드 처리
         if self.state == "StateType.TRAILING" and (self.opponent is not None):
             speed_la_for_lu = self.speed_now
         else:
@@ -137,13 +135,13 @@ class PP_Controller:
 
         steering_angle = np.arctan(2*self.wheelbase*np.sin(eta)/L1_distance)
 
-        # modifying steer based on speed
+        # 속도 기반 조향 보정 예시
         # steering_angle = self.speed_steer_scaling(steering_angle, speed_for_lu)
 
-        # # modifying steer based on velocity
+        # # 속도를 이용한 조향 스케일링
         # steering_angle *= np.clip(1 + (self.speed_now/10), 1, 1.25)
         
-        # limit change of steering angle
+        # 조향각 변화량 제한 예시
         # threshold = 0.4
         # if abs(steering_angle - self.curr_steering_angle) > threshold:
         #     self.logger_info(f"[PP Controller] steering angle clipped")
@@ -153,30 +151,30 @@ class PP_Controller:
 
     def calc_L1_point(self, lateral_error, sector_idx):
         """
-        The purpose of this function is to calculate the L1 point and distance
+        L1 포인트와 거리를 계산합니다.
         
         Inputs:
-            lateral_error: frenet d distance from car's position to nearest waypoint
+            lateral_error: 차량 위치에서 최근접 웨이포인트까지의 프레네 d 거리
         Returns:
-            L1_point: point at L1 distance in front of the car
-            L1_distance: distance of the L1 point to the car
-            sector_idx: index of the sector in the track
+            L1_point: 차량 전방 L1 거리 지점
+            L1_distance: L1 포인트까지의 거리
+            sector_idx: 트랙에서의 섹터 인덱스
         """
         
         self.idx_nearest_waypoint = self.nearest_waypoint(self.position_in_map[:2], self.waypoint_array_in_map[:, :2]) 
         
-        # if all waypoints are equal set self.idx_nearest_waypoint to 0
+        # 모든 웨이포인트가 동일하면 0으로 설정합니다.
         if np.isnan(self.idx_nearest_waypoint): 
             self.idx_nearest_waypoint = 0
 
-        # calculate L1 guidance
+        # L1 가이던스를 계산합니다.
         # L1_distance = self.q_l1 + self.speed_now * self.m_l1
         L1_distance = sector_to_lookahead_map[sector_idx]
         if self.state == "StateType.OVERTAKE" and (self.opponent is not None):
-            # if the opponent is in front of us, we want to use the distance to the opponent
+            # 선두 차량이 앞에 있으면 상대와의 거리를 사용합니다.
             L1_distance = np.clip(self.opponent[0] - self.position_in_map_frenet[0] - 0.5, 1.0, L1_distance)
 
-        # clip lower bound to avoid ultraswerve when far away from mincurv
+        # 하한을 제한해 과도한 조향을 방지합니다.
         # lower_bound = max(self.t_clip_min, np.sqrt(2)*lateral_error)
         lower_bound = self.t_clip_min
         L1_distance = np.clip(L1_distance, lower_bound, self.t_clip_max)
@@ -187,50 +185,49 @@ class PP_Controller:
 
     def find_global_speed(self, idx_nearest_waypoint):
         """
-        The purpose of this function is to find the global speed of the car
-        based on the nearest waypoint
+        최근접 웨이포인트 정보를 기반으로 전역 속도 레퍼런스를 계산합니다.
 
         Returns:
-            global_speed: speed of the car
+            global_speed: 차량이 따라야 할 전역 속도
         """
         s = self.waypoint_array_in_map[idx_nearest_waypoint, 3]
         track_lengths_arr = list(sector_to_track_lengths_dict.values())
-        # Find the index of the greatest value <= s 
+        # s 이하에서 가장 큰 값을 갖는 인덱스를 찾습니다.
         idx = find_closest_index(track_lengths_arr, s)
-        # the sector to track length has the end of s values
-        # so s lies in a sector where it is less than the value of that sector and greater than the value of the previous sector in track_lengths_arr
-        # we need to find the index of the sector to track length  for that s value
+        # 각 섹터별 누적 길이 배열은 구간의 끝점을 의미합니다.
+        # 따라서 s는 해당 섹터 끝값보다 작고 직전 섹터 값보다 큰 구간에 위치합니다.
+        # 이 s 값에 대응하는 섹터 인덱스를 찾아야 합니다.
         if track_lengths_arr[idx] < s:
             idx = idx + 1
         
         print(f"idx: {idx}, s: {s}")
 
-        # Get the sector for this idx
+        # 인덱스에 해당하는 섹터를 구합니다.
         sector = list(sector_to_track_lengths_dict.keys())[idx]
 
-        # Get the speed for this sector
+        # 해당 섹터의 목표 속도를 가져옵니다.
         global_speed = sector_to_velocity_map[sector]
         return global_speed, sector
     
     
     def calc_speed_command(self, v, lat_e_norm):
         """
-        The purpose of this function is to isolate the speed calculation from the main control_loop
+        속도 계산을 메인 루프에서 분리해 처리합니다.
         
         Inputs:
-            v: speed vector
-            lat_e_norm: normed lateral error
+            v: 속도 벡터
+            lat_e_norm: 정규화된 횡방향 오차
         Returns:
-            speed_command: calculated and adjusted speed, which can be sent to mux
+            speed_command: mux로 보낼 수 있는 조정된 속도 명령
         """
 
-        # lookahead for speed (speed delay incorporation by propagating position)
+        # 속도 지연을 보상하기 위한 루크어헤드 계산
         adv_ts_sp = self.speed_lookahead
         la_position = [self.position_in_map[0] + v[0]*adv_ts_sp, self.position_in_map[1] + v[1]*adv_ts_sp]
         idx_la_position = self.nearest_waypoint(la_position, self.waypoint_array_in_map[:, :2])
         # global_speed = self.waypoint_array_in_map[idx_la_position, 2]
         global_speed, sector_idx = self.find_global_speed(idx_la_position)
-        if(self.state == "StateType.TRAILING" and (self.opponent is not None)): #Trailing controller
+        if(self.state == "StateType.TRAILING" and (self.opponent is not None)):  # 추종 제어기
             speed_command = self.trailing_controller(global_speed)
         else:
             speed_command = global_speed
@@ -241,16 +238,16 @@ class PP_Controller:
     
     def trailing_controller(self, global_speed):
         """
-        Adjust the speed of the ego car to trail the opponent at a fixed distance
+        선두 차량을 일정 거리에서 추종하도록 속도를 조정합니다.
         Inputs:
-            speed_command: velocity of global raceline
-            self.opponent: frenet s position and vs velocity of opponent
-            self.position_in_map_frenet: frenet s position and vs veloctz of ego car
+            speed_command: 전역 레이싱 라인의 속도
+            self.opponent: 상대 차량의 프레네 s 위치와 속도
+            self.position_in_map_frenet: 자차의 프레네 s 위치와 속도
         Returns:
-            trailing_command: reference velocity for trailing
+            trailing_command: 추종용 기준 속도
         """
 
-        self.gap = (self.opponent[0] - self.position_in_map_frenet[0])%self.track_length # gap to opponent
+        self.gap = (self.opponent[0] - self.position_in_map_frenet[0])%self.track_length  # 상대 차량과의 거리
         self.gap_actual = self.gap
         self.gap_should = self.trailing_gap
         self.gap_error = self.gap_should - self.gap_actual
@@ -262,7 +259,7 @@ class PP_Controller:
         
         self.trailing_command = np.clip(self.opponent[2] - p_value - d_value, 0, global_speed) 
 
-        # if opponent is not visible, use global speed
+        # 상대 차량이 보이지 않으면 전역 속도를 사용합니다.
         if not self.opponent[3] and self.gap_actual > self.gap_should:
             self.trailing_command = global_speed
 
@@ -270,26 +267,26 @@ class PP_Controller:
 
     # def speed_steer_scaling(self, steer, speed):
     #     """
-    #     Steer scaling based on speed
-    #     decrease steer when driving fast
+    #     속도 기반으로 조향을 스케일링합니다.
+    #     고속 주행 시 조향량을 줄입니다.
 
     #     Returns:
-    #         steer: scaled steering angle based on speed
+    #         steer: 속도에 따라 조정된 조향각
     #     """
-    #     speed_diff = max(0.1,self.end_scale_speed-self.start_scale_speed) # to prevent division by zero
+    #     speed_diff = max(0.1,self.end_scale_speed-self.start_scale_speed) # 0으로 나누는 상황을 방지합니다.
     #     factor = 1 - np.clip((speed - self.start_scale_speed)/(speed_diff), 0.0, 1.0) * self.downscale_factor
     #     steer *= factor
     #     return steer
 
     def calc_lateral_error_norm(self):
         """
-        Calculates lateral error
+        횡방향 오차를 계산합니다.
 
         Returns:
-            lat_e_norm: normalization of the lateral error
-            lateral_error: distance from car's position to nearest waypoint
+            lat_e_norm: 정규화된 횡방향 오차
+            lateral_error: 차량 위치와 최근접 웨이포인트 사이의 거리
         """
-        lateral_error = abs(self.position_in_map_frenet[1]) # frenet coordinates d
+        lateral_error = abs(self.position_in_map_frenet[1])  # 프레네 좌표 d
 
         max_lat_e = 0.5
         min_lat_e = 0.
@@ -299,43 +296,42 @@ class PP_Controller:
 
     def speed_adjust_lat_err(self, global_speed, lat_e_norm):
         """
-        Reduce speed from the global_speed based on the lateral error 
-        and curvature of the track. lat_e_coeff scales the speed reduction:
-        lat_e_coeff = 0: no account for lateral error
-        lat_e_coaff = 1: maximum accounting
+        횡방향 오차와 곡률을 고려해 전역 속도를 줄입니다.
+        lat_e_coeff 값으로 감속 비중을 조절합니다.
+        lat_e_coeff = 0: 횡방향 오차를 무시
+        lat_e_coaff = 1: 횡방향 오차를 최대 반영
 
         Returns:
-            global_speed: the speed we want to follow
+            global_speed: 목표 속도
         """
-        # scaling down global speed with lateral error and curvature
-        # TODO: Maybe tune this
+        # 횡방향 오차와 곡률 기반 감속
+        # TODO: 추가 튜닝 여지
         if self.speed_now < 2.0:
             return global_speed
-        lat_e_coeff = self.lat_err_coeff # must be in [0, 1]
+        lat_e_coeff = self.lat_err_coeff  # [0, 1] 범위여야 합니다.
         global_speed *= (1 - lat_e_coeff + lat_e_coeff*np.exp(-lat_e_norm))
         return global_speed
     
     def speed_adjust_heading(self, speed_command):
         """
-        Reduce speed from the global_speed based on the heading error.
-        If the difference between the map heading and the actual heading
-        is larger than 20 degrees, the speed gets scaled down linearly up to 0.5x
+        헤딩 오차를 기준으로 속도를 줄입니다.
+        지도 헤딩과 실제 헤딩 차이가 20도 이상이면 최대 0.5배까지 선형으로 감속합니다.
         
         Returns:
-            global_speed: the speed we want to follow
+            global_speed: 목표 속도
         """
 
         heading = self.position_in_map[0,2]
         map_heading = self.waypoint_array_in_map[self.idx_nearest_waypoint, 4]
-        if abs(heading - map_heading) > np.pi: # resolves wrapping issues
+        if abs(heading - map_heading) > np.pi:  # 래핑 문제를 해결합니다.
             heading_error = 2*np.pi - abs(heading- map_heading)
         else:
             heading_error = abs(heading - map_heading)
 
-        if heading_error < np.pi/9: # 20 degrees error is okay
+        if heading_error < np.pi/9:  # 약 20도까지는 허용합니다.
             return speed_command
         elif heading_error < np.pi/2: 
-            scaler = 1 - 0.5* heading_error/(np.pi/2) # scale linearly to 0.5x
+            scaler = 1 - 0.5* heading_error/(np.pi/2)  # 0.5배까지 선형 감속
         else:
             scaler = 0.5
         self.logger_info(f"[MAP Controller] heading error decreasing velocity by {scaler}")
@@ -343,10 +339,10 @@ class PP_Controller:
         
     def nearest_waypoint(self, position, waypoints):
         """
-        Calculates index of nearest waypoint to the car
+        차량에 가장 가까운 웨이포인트 인덱스를 계산합니다.
 
         Returns:
-            index of nearest waypoint to the car
+            차량에 가장 가까운 웨이포인트 인덱스
         """        
         distances = np.linalg.norm(waypoints - position, axis=1)
         idx_nearest_waypoint = np.argmin(distances)
@@ -354,10 +350,10 @@ class PP_Controller:
 
     def waypoint_at_distance_before_car(self, distance, waypoints, idx_waypoint_behind_car):
         """
-        Calculates the waypoint at a certain frenet distance in front of the car
+        차량 전방 특정 프레네 거리만큼 떨어진 웨이포인트를 계산합니다.
 
         Returns:
-            waypoint as numpy array at a ceratin distance in front of the car
+            해당 거리 앞에 위치한 웨이포인트(np.array)
         """
         if distance is None:
             distance = self.t_clip_min
@@ -369,12 +365,12 @@ class PP_Controller:
     
     def search_closest_arr(self, arr, val):
         """
-        Find the index of the closest value in an maybe unsorted array.
+        정렬되지 않은 배열에서도 가장 가까운 값의 인덱스를 찾습니다.
         Args:
-            arr: Array to search.
-            val: Value to find.
+            arr: 탐색할 배열
+            val: 찾고자 하는 값
         Returns:
-            Index of the closest value.
+            가장 가까운 값의 인덱스
         """
         idx = 0
         for i in range(len(arr)):

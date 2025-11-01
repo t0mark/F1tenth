@@ -18,6 +18,7 @@ from f1tenth_icra_race_msgs.msg import ObstacleArray, OTWpntArray, WpntArray, Wp
 from visualization_msgs.msg import Marker, MarkerArray
 from modules import utils, frenet_conversion, state_helpers
 from tf_transformations import euler_from_quaternion
+import os
 
 def normalize_s(s, track_length):
     return s % track_length
@@ -44,9 +45,9 @@ class StateMachine(Node):
     def __init__(self):
         super().__init__('state_machine')
 
-        # Subscriptions
-        # Read waypoint file from parameter
-        self.declare_parameter("waypoint_file", "/home/vaithak/Downloads/UPenn/F1Tenth/sim_ws/src/f1tenth_icra_race/waypoints/levine-practise-lane-optimal.csv")
+        # 구독 설정
+        # 파라미터에서 웨이포인트 파일을 읽어옵니다.
+        self.declare_parameter("waypoint_file", os.path.join('src/path_planner/data', 'final_waypoints.csv'))
         waypoint_file = self.get_parameter("waypoint_file").get_parameter_value().string_value
 
         self.waypoints = np.genfromtxt(waypoint_file, delimiter=';', skip_header=1)
@@ -72,18 +73,16 @@ class StateMachine(Node):
 
         self.converter = frenet_conversion.FrenetConverter(self.waypoints_x, self.waypoints_y, waypoints_psi)
 
-        # Create parameters for plot and print debugging
+        # 플롯 및 콘솔 디버깅을 위한 파라미터를 선언합니다.
         self.declare_parameter('plot_debug', False)
         self.plot_debug = self.get_parameter('plot_debug').value
         self.declare_parameter('print_debug', False)
         self.print_debug = self.get_parameter('print_debug').value
-        self.declare_parameter("is_sim", True)
-        self.is_sim = self.get_parameter("is_sim").get_parameter_value().bool_value
         self.declare_parameter("rate_hz", 50)
         self.rate_hz = self.get_parameter("rate_hz").get_parameter_value().integer_value
         self.timer = self.create_timer(1.0 / self.rate_hz, self.main_loop_callback)
 
-        # Other parameters
+        # 기타 파라미터를 선언합니다.
         self.declare_parameter("gb_ego_width_m", 0.15)
         self.gb_ego_width_m = self.get_parameter("gb_ego_width_m").get_parameter_value().double_value
         self.declare_parameter("lateral_width_m", 0.3)
@@ -101,25 +100,19 @@ class StateMachine(Node):
             durability=QoSDurabilityPolicy.VOLATILE,
             history=QoSHistoryPolicy.KEEP_LAST,
         )
-        if self.is_sim:
-            self.pose_sub = self.create_subscription(
+        self.pose_sub = self.create_subscription(
                 Odometry,
-                '/ego_racecar/odom',
+                '/odom',
                 self.pose_callback,
                 qos)
-        else:
-            self.pose_sub = self.create_subscription(
-                Odometry,
-                '/pf/pose/odom',
-                self.pose_callback,
-                qos)
+            
             
         self.create_subscription(
             ObstacleArray, '/perception/obstacles', self.obstacle_callback, qos
         )
         self.create_subscription(OTWpntArray, '/planner/avoidance/otwpnts', self.avoidance_cb, qos)
 
-        # Publishers
+        # 퍼블리셔 설정
         self.state_pub = self.create_publisher(String, '/state_machine/state', qos)
         self.loc_wpnt_pub = self.create_publisher(WpntArray, '/state_machine/local_waypoints', qos)
         if self.plot_debug:
@@ -134,13 +127,13 @@ class StateMachine(Node):
         self.first_visualization = True
 
         self.obstacles = []
-        self.spline_ttl = 1.0 # Follow the spline for 1 second in worst case
+        self.spline_ttl = 1.0 # 최악의 경우 1초 동안 스플라인을 유지합니다.
         self.spline_ttl_counter = int(self.spline_ttl * self.rate_hz)
         self.avoidance_wpnts = None
         self.last_valid_avoidance_wpnts = None
         self.local_waypoints = WpntArray()
 
-        # Declare parameters for state machine
+        # 상태 머신 관련 파라미터를 선언합니다.
         self.state_logic = state_helpers.DefaultStateLogic
         
         self.declare_parameter("mode", "head_to_head")
@@ -161,7 +154,7 @@ class StateMachine(Node):
 
 
     def pose_callback(self, pose_msg):
-        # Get the current x, y position of the vehicle
+        # 차량의 현재 x, y 위치를 가져옵니다.
         pose = pose_msg.pose.pose
         self.car_global_x = pose.position.x
         self.car_global_y = pose.position.y
@@ -174,7 +167,7 @@ class StateMachine(Node):
         if self.print_debug:
             self.get_logger().info(f'Pose: {self.car_global_x}, {self.car_global_y}, {self.car_global_yaw}')
 
-        # Convert the global coordinates to Frenet coordinates
+        # 전역 좌표를 프레네 좌표로 변환합니다.
         s, d = self.converter.get_frenet(np.array([self.car_global_x]), np.array([self.car_global_y]))
         self.car_s = normalize_s(s[0], self.track_length)
         self.car_d = d[0]

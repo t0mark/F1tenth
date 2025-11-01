@@ -22,9 +22,11 @@ from f1tenth_icra_race_msgs.msg import ObstacleArray, ObstacleMsg
 
 from visualization_msgs.msg import Marker, MarkerArray
 
+import os
+
 Point2D = Tuple[float, float]
 
-# This is the equivalent of "latching" in ROS1
+# ROS1의 "latching"과 동일한 동작을 제공합니다.
 latching_qos = QoSProfile(
     depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
     history=HistoryPolicy.KEEP_LAST)
@@ -39,7 +41,7 @@ def normalize_s(x,track_length):
 
 class Obstacle:
     """
-    This class implements the properties of the obstacles
+    장애물의 속성을 표현하는 클래스입니다.
     """
     def __init__(self, x, y, size, theta) -> None:
         self.center_x = x
@@ -50,21 +52,21 @@ class Obstacle:
 
 class OpponentDetection(Node):
     """
-    This class implements a ROS node that detects obstacles on the track
+    트랙 위의 장애물을 감지하는 ROS 노드입니다.
 
-    It subscribes to the following topics:
-        - `/scan`: Publishes the lidar scans
-        - '/ego_racecar/odom' or '/pf/pose/odom': Publishes the odometry of the ego car.
+    구독 토픽:
+        - `/scan`: 라이다 스캔
+        - '/ego_racecar/odom' 또는 '/pf/pose/odom': 자차의 오도메트리
 
-    The node publishes the following topics:
-        - `/breakpoints_markers`: Publishes the breakpoint markers of the obstacles
-        - `/raw_obstacles`: Publishes the detected obstacles
-        - `/obstacles_markers_new`: Publishes the markers of the detected obstacles
+    발행 토픽:
+        - `/breakpoints_markers`: 장애물 경계 마커
+        - `/raw_obstacles`: 감지된 장애물 정보
+        - `/obstacles_markers_new`: 장애물 시각화 마커
     """
 
     def __init__(self) -> None:
         """
-        Initialize the node, subscribe to topics, and create publishers and service proxies
+        노드를 초기화하고, 필요한 구독자와 퍼블리셔를 생성합니다.
         """
         super().__init__('opponent_detection')
 
@@ -73,36 +75,28 @@ class OpponentDetection(Node):
                                    reliability=rclpy.qos.QoSReliabilityPolicy.RELIABLE,
                                    durability=rclpy.qos.QoSDurabilityPolicy.VOLATILE)
         
-        # Declare a parameter to check if the node is running in simulation
-        self.declare_parameter('is_sim', True)
-        self.is_sim = self.get_parameter('is_sim').value
+        # 시뮬레이션 실행 여부를 확인하는 파라미터를 선언합니다.
 
-        # Create parameters for plot and print debugging
+        # 플롯 및 콘솔 디버깅을 위한 파라미터를 생성합니다.
         self.declare_parameter('plot_debug', False)
         self.plot_debug = self.get_parameter('plot_debug').value
         self.declare_parameter('print_debug', False)
         self.print_debug = self.get_parameter('print_debug').value
 
-        # Create a subscriber to the pose topic
+        # 포즈 토픽 구독자를 생성합니다.
         msgs_cb_group = ReentrantCallbackGroup()
-        if self.is_sim:
-            self.pose_sub = self.create_subscription(
+        self.pose_sub = self.create_subscription(
                 Odometry,
-                '/ego_racecar/odom',
+                '/odom',
                 self.pose_callback,
                 qos,
                 callback_group=msgs_cb_group)
-        else:
-            self.pose_sub = self.create_subscription(
-                Odometry,
-                '/pf/pose/odom',
-                self.pose_callback,
-                qos,
-                callback_group=msgs_cb_group)
+            
 
-        # Create a subscriber to the laser scan topic
+
+        # 라이다 스캔 토픽 구독자를 생성합니다.
         scan_topic = '/scan'
-        self.laser_frame = 'ego_racecar/laser' if self.is_sim else 'laser'
+        self.laser_frame = '/laser' if self.is_sim else 'laser'
         self.laser_sub = self.create_subscription(
             LaserScan,
             scan_topic,
@@ -110,8 +104,9 @@ class OpponentDetection(Node):
             qos,
             callback_group=msgs_cb_group)
 
-        # Read the waypoints from the CSV file
-        self.declare_parameter('waypoint_file', '/home/vaithak/Downloads/UPenn/F1Tenth/sim_ws/src/f1tenth_icra_race/waypoints/levine-practise-lane-optimal.csv')
+        # CSV 파일에서 웨이포인트를 읽어옵니다.
+        waypoint_file = os.path.join('src/path_planner/data', 'final_waypoints.csv')
+        self.declare_parameter('waypoint_file', waypoint_file)
         waypoint_file = self.get_parameter('waypoint_file').value
         self.waypoints = np.genfromtxt(waypoint_file, delimiter='; ', skip_header=1)
         waypoint_cols_dict = utils.column_numbers_for_waypoints()
@@ -124,15 +119,15 @@ class OpponentDetection(Node):
         self.biggest_d = max(self.d_right_array+self.d_left_array)
         self.track_length = self.waypoints[-1, waypoint_cols_dict['s_racetraj_m']]
 
-        # Initialize the FrenetConverter object
+        # FrenetConverter 객체를 초기화합니다.
         self.frenet_converter = FrenetConverter(
             self.waypoints[:, 0], self.waypoints[:, 1], yaws)
         self.get_logger().info(
             "[Opponent Detection]: initialized FrenetConverter object")
 
-        # --- Node properties ---
+        # --- 노드 속성 ---
 
-        # --- Publisher ---
+        # --- 퍼블리셔 ---
         if self.plot_debug:
             self.breakpoints_markers_pub = self.create_publisher(
                 MarkerArray, '/perception/breakpoints_markers', 5)
@@ -151,7 +146,7 @@ class OpponentDetection(Node):
         self.declare_parameter("min_2_points_dist", 0.01, descriptor=ParameterDescriptor(
             description="minimum distance between two points"))
 
-        # --- Tunable params ---
+        # --- 조정 가능한 파라미터 ---
         self.rate = self.get_parameter(
             "rate").get_parameter_value().integer_value
         self.lambda_angle = self.get_parameter(
@@ -161,7 +156,7 @@ class OpponentDetection(Node):
         self.min_2_points_dist = self.get_parameter(
             "min_2_points_dist").get_parameter_value().double_value
 
-        # Make the above params tunable instead of dynamic
+        # 위 파라미터를 동적이 아닌 조정 가능한 형태로 유지합니다.
         self.declare_parameter('min_obs_size', 10, descriptor=ParameterDescriptor(
             description="minimum number of points in an obstacle")
         )
@@ -178,14 +173,14 @@ class OpponentDetection(Node):
         self.max_viewing_distance = self.get_parameter(
             'max_viewing_distance').get_parameter_value().double_value
 
-        # --- variables ---
-        # ego car s position
+        # --- 변수 ---
+        # 자차의 s 좌표
         self.car_s = None
         self.car_global_x = 0
         self.car_global_y = 0
         self.car_global_yaw = 0
 
-        # raw scans from the lidar
+        # 라이다 원시 스캔 데이터
         self.laser_scans = None
         self.angle_increment = 0
         self.angle_min = 0
@@ -198,10 +193,10 @@ class OpponentDetection(Node):
         # main_timer_cb_group = MutuallyExclusiveCallbackGroup()
         self.main_timer = self.create_timer(1/self.rate, self.loop, callback_group=msgs_cb_group)
 
-    # --- Callbacks ---
+    # --- 콜백 ---
 
     def pose_callback(self, pose_msg):
-        # Get the current x, y position of the vehicle
+        # 차량의 현재 x, y 위치를 가져옵니다.
         pose = pose_msg.pose.pose
         self.car_global_x = pose.position.x
         self.car_global_y = pose.position.y
@@ -214,7 +209,7 @@ class OpponentDetection(Node):
         if self.print_debug:
             self.get_logger().info(f'Pose: {self.car_global_x}, {self.car_global_y}, {self.car_global_yaw}')
 
-        # Convert the global coordinates to Frenet coordinates
+        # 전역 좌표를 프레네 좌표로 변환합니다.
         s, _ = self.frenet_converter.get_frenet(np.array([self.car_global_x]), np.array([self.car_global_y]))
         self.car_s = normalize_s(s[0], self.track_length)
 
@@ -228,10 +223,10 @@ class OpponentDetection(Node):
         if self.angles is None:
             self.angles = np.arange(-np.pi/2, np.pi/2, self.angle_increment)
 
-    # --- Functions ---
+    # --- 함수 모음 ---
 
     def angle_to_index(self, angle):
-        """ Convert a given angle in radians to an index in the LiDAR data.ranges array
+        """ 라디안 각도를 LiDAR ranges 배열의 인덱스로 변환합니다.
         """
         index = (angle - self.angle_min) / self.angle_increment
         return int(index)
@@ -259,23 +254,23 @@ class OpponentDetection(Node):
 
     def scans2ObsPointCloud(self, car_s: Float32, scans: LaserScan, car_x: Float32, car_y: Float32, car_yaw: Float32) -> List[List[Point2D]]:
         """
-        Converts the lidar scans to a 2D PointCloud and segments them into objects
+        라이다 스캔을 2D 포인트 클라우드로 변환하고 객체 단위로 분할합니다.
         """
-        # --- initialisation of some utility parameters ---
+        # --- 보조 파라미터 초기화 ---
         l = self.lambda_angle
         d_phi = scans.angle_increment
         sigma = self.sigma
 
-        # --- transform the scan ranges to a cloud point ---
-        # Only consider angles from -90 to 90 degrees
+        # --- 스캔 범위를 포인트 클라우드로 변환 ---
+        # -90도에서 90도 범위의 각도만 고려합니다.
         ranges = np.array(scans.ranges[self.front_view_start_index:self.front_view_end_index+1])
         x_laser_frame = (ranges * np.cos(self.angles)).flatten()
         y_laser_frame = (ranges * np.sin(self.angles)).flatten()
         z_laser_frame = np.zeros(len(ranges))
-        # 4xN matrix
+        # 4xN 행렬
         xyz_laser_frame = np.vstack((x_laser_frame, y_laser_frame, z_laser_frame, np.ones(len(ranges))))
 
-        # Form the transformation matrix using the car pose
+        # 차량 자세를 이용해 변환 행렬을 구성합니다.
         H_l2m = np.eye(4)
         H_l2m[0, 3] = car_x
         H_l2m[1, 3] = car_y
@@ -290,9 +285,8 @@ class OpponentDetection(Node):
         cloudPoints_list = np.transpose(xyz_map[:2, :]).tolist()
 
         # --------------------------------------------------
-        # segment the cloud point into smaller point clouds
-        # that represent potential object using the adaptive
-        # method
+        # 적응형 방법으로 포인트 클라우드를 잠재적 객체 단위로
+        # 분할합니다.
         # --------------------------------------------------
 
         first_point: Point2D = (cloudPoints_list[0][0], cloudPoints_list[0][1])
@@ -305,35 +299,34 @@ class OpponentDetection(Node):
             curr_range = scans.ranges[i]
             d_max = curr_range * div_const + 3 * sigma
  
-            # Distance between points does not change in map frame or laser frame.
+            # 점 사이의 거리는 맵 프레임과 라이다 프레임 모두에서 동일합니다.
             dist_to_next_point = np.linalg.norm(xyz_laser_frame[:2, i] - xyz_laser_frame[:2, i - 1])
             
-            # But from now onward, we deal with points in map frame.
+            # 이후에는 맵 프레임의 점을 사용합니다.
             curr_point = (cloudPoints_list[i][0], cloudPoints_list[i][1])
             if dist_to_next_point < d_max:
                 objects_pointcloud_list[-1].append(curr_point)
             else:
                 objects_pointcloud_list.append([curr_point])
 
-        The above logic is replaced with the following vectorized code
+        위 로직은 아래의 벡터화된 코드로 대체했습니다.
         """
 
         d_maxs = ranges * div_const + 3 * sigma
 
-        # Calculate distances between consecutive points in the laser frame
+        # 라이다 프레임에서 연속 점 사이의 거리를 계산합니다.
         dists = np.linalg.norm(np.diff(xyz_laser_frame[:2, :], axis=1), axis=0)
 
-        # Identify indices where a new object starts
+        # 새로운 객체가 시작되는 인덱스를 찾습니다.
         new_object_indices = np.where(dists >= d_maxs[:-1])[0] + 1
 
-        # Split the cloudPoints_list into objects based on new_object_indices
+        # new_object_indices를 기준으로 포인트 클라우드를 나눕니다.
         split_indices = np.split(np.arange(len(cloudPoints_list)), new_object_indices)
         objects_pointcloud_list = [np.array(cloudPoints_list)[indices].tolist() for indices in split_indices]
 
         # ------------------------------------------------
-        # removing point clouds that are too small or too
-        # big or that have their center point not on the
-        # track
+        # 지나치게 작거나 크고, 중심이 트랙 위에 없는
+        # 포인트 클라우드를 제거합니다.
         # ------------------------------------------------
 
         x_points = []
@@ -345,7 +338,7 @@ class OpponentDetection(Node):
             y_points.append(mean_y_pos)
         s_points, d_points = self.frenet_converter.get_frenet(np.array(x_points), np.array(y_points))
 
-        # Use list comprehension to filter objects efficiently
+        # 리스트 컴프리헨션으로 효율적으로 필터링합니다.
         objects_pointcloud_list = [
             obj for idx, obj in enumerate(objects_pointcloud_list)
             if len(obj) >= self.min_obs_size and self.laserPointOnTrack(s_points[idx], d_points[idx], car_s)
@@ -354,7 +347,7 @@ class OpponentDetection(Node):
         if self.plot_debug:
             markers_array = []
             for idx, object in enumerate(objects_pointcloud_list):
-                # first element
+                # 첫 번째 포인트
                 marker = Marker()
                 marker.header.frame_id = "map"
                 marker.header.stamp = self.get_clock().now().to_msg()
@@ -372,7 +365,7 @@ class OpponentDetection(Node):
                 marker.pose.orientation.w = 1.
                 markers_array.append(marker)
 
-                # last element
+                # 마지막 포인트
                 marker = Marker()
                 marker.header.frame_id = "map"
                 marker.header.stamp = self.get_clock().now().to_msg()
@@ -389,7 +382,7 @@ class OpponentDetection(Node):
                 marker.pose.position.y = object[-1][1]
                 marker.pose.orientation.w = 1.
                 markers_array.append(marker)
-            # This causes the markers to flicker in RViz, but likely doesn't affect the underlying algo.
+            # RViz에서 마커가 깜박일 수 있지만 알고리즘에는 큰 영향을 주지 않습니다.
             self.breakpoints_markers_pub.publish(self.clearmarkers())
             if len(markers_array) > 0:
                 self.breakpoints_markers_pub.publish(MarkerArray(markers=markers_array))
@@ -400,7 +393,7 @@ class OpponentDetection(Node):
         current_obstacle_array = []
         min_dist = self.min_2_points_dist
         for obstacle in objects_pointcloud_list:
-            # --- fit a rectangle to the data points ---
+            # --- 데이터 포인트에 사각형을 맞춥니다. ---
             theta = np.linspace(0, np.pi/2-np.pi/180, 90)
             cos_theta = np.cos(theta)
             sin_theta = np.sin(theta)
@@ -426,8 +419,7 @@ class OpponentDetection(Node):
             D[D < min_dist] = min_dist
 
             # --------------------------------------------
-            # extract the center of the obstacle assuming
-            # that it is actually a square obstacle
+            # 장애물이 정사각형이라고 가정하고 중심을 계산합니다.
             # --------------------------------------------
 
             theta_opt = np.argmax(np.sum(np.reciprocal(D), axis=0))*np.pi/180
@@ -440,49 +432,49 @@ class OpponentDetection(Node):
             max_dist2 = np.max(distances2)
             min_dist2 = np.min(distances2)
 
-            # corners are detected in a anti_clockwise manner
+            # 모서리들은 시계 반대 방향으로 검출됩니다.
             corner1 = None
             corner2 = None
-            # the obstacle has more detection in the verticle direction
+            # 장애물 감지가 세로 방향으로 더 많을 때
             if (np.var(distances2) > np.var(distances1)):
                 if (np.linalg.norm(-distances1+max_dist1) < np.linalg.norm(distances1-min_dist1)):
-                    # the detections are nearer to the right edge
-                    # lower_right_corner
+                    # 감지 지점이 오른쪽 경계에 더 가깝습니다.
+                    # 오른쪽 아래 모서리
                     corner1 = np.array([np.cos(theta_opt)*max_dist1-np.sin(theta_opt)*min_dist2,
                                         np.sin(theta_opt)*max_dist1+np.cos(theta_opt)*min_dist2])
-                    # upper_right_corner
+                    # 오른쪽 위 모서리
                     corner2 = np.array([np.cos(theta_opt)*max_dist1-np.sin(theta_opt)*max_dist2,
                                         np.sin(theta_opt)*max_dist1+np.cos(theta_opt)*max_dist2])
                 else:
-                    # the detections are nearer to the left edge
-                    # upper_left_corner
+                    # 감지 지점이 왼쪽 경계에 더 가깝습니다.
+                    # 왼쪽 위 모서리
                     corner1 = np.array([np.cos(theta_opt)*min_dist1-np.sin(theta_opt)*max_dist2,
                                         np.sin(theta_opt)*min_dist1+np.cos(theta_opt)*max_dist2])
-                    # lower_left_corner
+                    # 왼쪽 아래 모서리
                     corner2 = np.array([np.cos(theta_opt)*min_dist1-np.sin(theta_opt)*min_dist2,
                                         np.sin(theta_opt)*min_dist1+np.cos(theta_opt)*min_dist2])
-            else:  # the obstacle has more detection in the horizontal direction
+            else:  # 장애물 감지가 가로 방향으로 더 많을 때
                 if (np.linalg.norm(-distances2+max_dist2) < np.linalg.norm(distances2-min_dist2)):
-                    # the detections are nearer to the top edge
-                    # upper_right_corner
+                    # 감지 지점이 상단 경계에 더 가깝습니다.
+                    # 오른쪽 위 모서리
                     corner1 = np.array([np.cos(theta_opt)*max_dist1-np.sin(theta_opt)*max_dist2,
                                         np.sin(theta_opt)*max_dist1+np.cos(theta_opt)*max_dist2])
-                    # upper_left_corner
+                    # 왼쪽 위 모서리
                     corner2 = np.array([np.cos(theta_opt)*min_dist1-np.sin(theta_opt)*max_dist2,
                                         np.sin(theta_opt)*min_dist1+np.cos(theta_opt)*max_dist2])
                 else:
-                    # the detections are nearer to the bottom edge
-                    # lower_left_corner
+                    # 감지 지점이 하단 경계에 더 가깝습니다.
+                    # 왼쪽 아래 모서리
                     corner1 = np.array([np.cos(theta_opt)*min_dist1-np.sin(theta_opt)*min_dist2,
                                         np.sin(theta_opt)*min_dist1+np.cos(theta_opt)*min_dist2])
-                    # lower_right_corner
+                    # 오른쪽 아래 모서리
                     corner2 = np.array([np.cos(theta_opt)*max_dist1-np.sin(theta_opt)*min_dist2,
                                         np.sin(theta_opt)*max_dist1+np.cos(theta_opt)*min_dist2])
-            # vector that goes from corner1 to corner2
+            # corner1에서 corner2로 가는 벡터
             colVec = np.array([corner2[0]-corner1[0], corner2[1]-corner1[1]])
-            # orthogonal vector to the one that goes from corner1 to corner2
+            # 위 벡터에 수직인 벡터
             orthVec = np.array([-colVec[1], colVec[0]])
-            # center position
+            # 중심 위치
             center = corner1 + 0.5*colVec + 0.5*orthVec
 
             current_obstacle_array.append(
@@ -495,7 +487,7 @@ class OpponentDetection(Node):
 
     def checkObstacles(self, current_obstacles):
         """
-        Delete obstacles that are too big
+        너무 큰 장애물을 제거합니다.
         """
 
         remove_list = []
@@ -573,7 +565,7 @@ class OpponentDetection(Node):
             marker.pose.orientation.w = q[3]
             markers_array.append(marker)
 
-        # This causes the markers to flicker in RViz, but likely doesn't affect the underlying algo.
+        # RViz에서 마커가 깜박일 수 있지만 알고리즘에는 큰 영향을 주지 않습니다.
         self.obstacles_marker_pub.publish(self.clearmarkers())
         if len(markers_array) > 0:
             self.obstacles_marker_pub.publish(MarkerArray(markers=markers_array))
@@ -581,7 +573,7 @@ class OpponentDetection(Node):
 
     def loop(self):
         """
-        Main loop of the node
+        노드의 메인 루프입니다.
         """
         if self.laser_scans is None or self.car_s is None:
             return
@@ -592,7 +584,7 @@ class OpponentDetection(Node):
         car_yaw = self.car_global_yaw
         car_s = self.car_s
 
-        # --- obstacle detection ---
+        # --- 장애물 감지 ---
         if self.print_debug:
             start_time = time.perf_counter()
         

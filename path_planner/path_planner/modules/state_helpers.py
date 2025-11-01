@@ -8,7 +8,7 @@ class StateType(enum.Enum):
 
 def string_to_state_type(state_string: str) -> StateType:
     """
-    Converts a string to a StateType enum.
+    문자열을 StateType 열거형으로 변환합니다.
     """
     try:
         return StateType[state_string]
@@ -17,7 +17,7 @@ def string_to_state_type(state_string: str) -> StateType:
     
 def state_type_to_string(state_type: StateType) -> str:
     """
-    Converts a StateType enum to a string.
+    StateType 열거형을 문자열로 변환합니다.
     """
     if isinstance(state_type, StateType):
         return state_type.value
@@ -26,9 +26,9 @@ def state_type_to_string(state_type: StateType) -> str:
 
 def DefaultStateLogic(state_machine):
     """
-    This is a global state that incorporates the other states
+    다른 상태들을 포괄하는 전체 상태 로직입니다.
     """ 
-    # Convert above to if statements
+    # 위 조건을 if 문으로 표현합니다.
     if state_machine.state == StateType.GB_TRACK:
         return GlobalTracking(state_machine)
     elif state_machine.state == StateType.TRAILING:
@@ -39,8 +39,8 @@ def DefaultStateLogic(state_machine):
         raise NotImplementedError(f"State {state_machine.state} not recognized")
 
 """
-Here we define the behaviour in the different states.
-Every function should be fairly concise, and output an array.
+각 상태에서의 동작을 정의합니다.
+모든 함수는 간결하게 작성하고 배열을 반환해야 합니다.
 """
 def GlobalTracking(state_machine):
     curr_s = state_machine.car_s
@@ -48,7 +48,7 @@ def GlobalTracking(state_machine):
     return [state_machine.glb_wpnts[(s_idx + i)%state_machine.num_glb_wpnts] for i in range(state_machine.n_loc_wpnts)]
 
 def Trailing(state_machine):
-    # This allows us to trail on the last valid spline if necessary
+    # 필요하면 마지막으로 유효했던 스플라인을 따라갈 수 있도록 합니다.
     curr_s = state_machine.car_s
     s_idx = find_closest_index(state_machine.wpnts_s_array, curr_s)
     if state_machine.last_valid_avoidance_wpnts is not None:
@@ -63,7 +63,7 @@ def Overtaking(state_machine):
     return [spline_wpts[(s_idx + i)%state_machine.num_glb_wpnts] for i in range(state_machine.n_loc_wpnts)]
 
 
-# ------------------ State transitions ----------------------
+# ------------------ 상태 전환 ----------------------
 def dummy_transition(state_machine)->str:
     return StateType.GB_TRACK
         
@@ -82,7 +82,7 @@ def head_to_head_transition(state_machine)->str:
 
 
 def SplineGlobalTrackingTransition(state_machine) -> StateType:
-    """Transitions for being in `StateType.GB_TRACK`"""
+    """`StateType.GB_TRACK` 상태에서의 전이 조건."""
     if state_machine._check_gbfree:
         return StateType.GB_TRACK
     else:
@@ -90,7 +90,7 @@ def SplineGlobalTrackingTransition(state_machine) -> StateType:
 
 
 def SplineTrailingTransition(state_machine) -> StateType:
-    """Transitions for being in `StateType.TRAILING`"""
+    """`StateType.TRAILING` 상태에서의 전이 조건."""
     gb_free = state_machine._check_gbfree
     ot_sector = state_machine._check_ot_sector
 
@@ -110,22 +110,22 @@ def SplineTrailingTransition(state_machine) -> StateType:
 
 
 def SplineOvertakingTransition(state_machine) -> StateType:
-    """Transitions for being in `StateType.OVERTAKE`"""
+    """`StateType.OVERTAKE` 상태에서의 전이 조건."""
     in_ot_sector = state_machine._check_ot_sector
     spline_valid = state_machine._check_availability_spline_wpts
     o_free = state_machine._check_ofree
 
-    # If spline is on an obstacle we trail
+    # 스플라인 경로가 장애물 위에 놓이면 추종 상태로 전환합니다.
     if not o_free:
         return StateType.TRAILING
     if in_ot_sector and o_free and spline_valid:
         return StateType.OVERTAKE
-    # If spline becomes unvalid while overtaking, we trail
+    # 추월 중 스플라인이 무효가 되면 추종 상태로 돌아갑니다.
     elif in_ot_sector and not spline_valid and not o_free:
         return StateType.TRAILING
-    # go to GB_TRACK if not in ot_sector and the GB is free
+    # 추월 구간이 아니고 GB가 비어 있으면 GB_TRACK으로 전환합니다.
     elif not in_ot_sector and state_machine._check_gbfree:
         return StateType.GB_TRACK
-    # go to Trailing if not in ot_sector and the GB is not free
+    # 추월 구간이 아니고 GB가 비어 있지 않으면 Trailing으로 전환합니다.
     else:
         return StateType.TRAILING

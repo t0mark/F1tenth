@@ -16,8 +16,8 @@ class GlobalCenterlineNode(Node):
     def __init__(self):
         super().__init__('global_centerline_node')
 
-        # Parameters
-        self.declare_parameter('map_path', '')  # map root without extension, e.g., /.../maps/Spielberg_map
+        # 파라미터 설정
+        self.declare_parameter('map_path', '')  # 확장자를 제외한 맵 루트 경로(예: /.../maps/Spielberg_map)
         self.declare_parameter('map_img_ext', '.png')
         self.declare_parameter('map_yaml_path', '')
         self.declare_parameter('sample_step_m', 0.2)
@@ -31,7 +31,7 @@ class GlobalCenterlineNode(Node):
         self.topic = self.get_parameter('publish_topic').get_parameter_value().string_value
         save_overlay = bool(self.get_parameter('save_centerline_overlay').value)
 
-        # If map_path not specified, try reading f1tenth_gym_ros config/sim.yaml
+        # map_path가 지정되지 않은 경우 f1tenth_gym_ros의 config/sim.yaml에서 값을 읽어옵니다.
         if not map_path:
             try:
                 fgr = get_package_share_directory('f1tenth_gym_ros')
@@ -47,17 +47,17 @@ class GlobalCenterlineNode(Node):
         if not map_yaml_path and map_path:
             map_yaml_path = map_path + '.yaml'
 
-        # Resolve paths
+        # 경로를 확정합니다.
         if not map_path:
             raise RuntimeError('map_path parameter is required (map root path without extension).')
         img_path = map_path + map_img_ext
         yaml_path = map_yaml_path
 
-        # Extract skeleton and waypoints
+        # 스켈레톤과 웨이포인트를 추출합니다.
         centerline_overlay_path = map_path + '_centerline.png'
         skeleton = extract_centerline_image(img_path, centerline_overlay_path) if save_overlay else None
         if skeleton is None:
-            # still need a skeleton mask for waypoints
+            # 웨이포인트 생성을 위해 스켈레톤 마스크가 여전히 필요합니다.
             skeleton = extract_centerline_image(img_path, centerline_overlay_path)
 
         pts_uv = order_skeleton_points(skeleton)
@@ -65,7 +65,7 @@ class GlobalCenterlineNode(Node):
         waypoints_xy = downsample_loop(pts_uv, map_info, step_meters=self.sample_step)
         self.get_logger().info(f'Centerline waypoints: {len(waypoints_xy)}')
 
-        # Prepare Path message
+        # Path 메시지를 준비합니다.
         self.frame_id = 'map'
         self.path_msg = Path()
         self.path_msg.header.frame_id = self.frame_id
@@ -78,13 +78,13 @@ class GlobalCenterlineNode(Node):
             ps.pose.orientation.w = 1.0
             self.path_msg.poses.append(ps)
 
-        # Publisher (latched-like behavior via transient local)
+        # 퍼블리셔 설정(TRANSIENT_LOCAL QoS로 래치와 유사한 동작을 제공합니다.)
         qos = QoSProfile(depth=1,
                          reliability=ReliabilityPolicy.RELIABLE,
                          durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.pub = self.create_publisher(Path, self.topic, qos)
 
-        # Periodic publish to keep timestamps fresh
+        # 타임스탬프 유지를 위해 주기적으로 퍼블리시합니다.
         self.timer = self.create_timer(1.0, self._publish_once)
         self._publish_once()
 
