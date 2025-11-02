@@ -33,6 +33,8 @@ bridge:
     opp_odom_topic: 'odom'
     opp_ego_odom_topic: 'opp_odom'
     opp_drive_topic: 'opp_drive'
+    speed_scale: 0.968630
+    steer_scale: 1.015181
 
     # transform related
     scan_distance_to_base_link: 0.0

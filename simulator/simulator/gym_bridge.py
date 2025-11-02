@@ -115,6 +115,8 @@ class GymBridge(Node):
             'obstacle_length': 0.12,
             'obstacle_width': 0.1,
             'obstacle_height': 0.2,
+            'speed_scale': 1.0,
+            'steer_scale': 1.0,
         }
 
         for name, default in default_params.items():
@@ -135,6 +137,8 @@ class GymBridge(Node):
         self.angle_max = scan_fov / 2.
         self.angle_inc = scan_fov / scan_beams
         self.scan_distance_to_base_link = self.get_parameter('scan_distance_to_base_link').value
+        self.speed_scale = float(self.get_parameter('speed_scale').value)
+        self.steer_scale = float(self.get_parameter('steer_scale').value)
         
         # 메인 차량(ego) 설정
         sx = self.get_parameter('sx').value
@@ -297,14 +301,16 @@ class GymBridge(Node):
         """
         requested_speed = drive_msg.drive.speed
         steering_angle = drive_msg.drive.steering_angle
+        scaled_speed = requested_speed * self.speed_scale
+        scaled_steering = steering_angle * self.steer_scale
 
         if vehicle == 'ego':
-            self.ego_requested_speed = requested_speed
-            self.ego_steer = steering_angle
+            self.ego_requested_speed = scaled_speed
+            self.ego_steer = scaled_steering
             self.ego_drive_published = True
         elif vehicle == 'opp':
-            self.opp_requested_speed = requested_speed
-            self.opp_steer = steering_angle
+            self.opp_requested_speed = scaled_speed
+            self.opp_steer = scaled_steering
             self.opp_drive_published = True
 
     def _reset_environment(self, poses):
