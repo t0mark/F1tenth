@@ -177,7 +177,7 @@ class PP_Controller:
         idx_la_position = self.nearest_waypoint(la_position, self.waypoint_array_in_map[:, :2])
         
         # 웨이포인트에서 직접 목표 속도를 가져옵니다.
-        global_speed = self.waypoint_array_in_map[idx_la_position, 7]
+        global_speed = self.waypoint_array_in_map[idx_la_position, 2]
 
         if(self.state == StateType.TRAILING and (self.opponent is not None)):  # 추종 제어기
             speed_command = self.trailing_controller(global_speed)
@@ -245,7 +245,7 @@ class PP_Controller:
         """
         # 횡방향 오차와 곡률 기반 감속
         # TODO: 추가 튜닝 여지
-        if self.speed_now < 2.0:
+        if self.speed_now < 1.0:
             return global_speed
         lat_e_coeff = self.lat_err_coeff  # [0, 1] 범위여야 합니다.
         global_speed *= (1 - lat_e_coeff + lat_e_coeff*np.exp(-lat_e_norm))
@@ -282,7 +282,7 @@ class PP_Controller:
 
         Returns:
             차량에 가장 가까운 웨이포인트 인덱스
-        """        
+        """
         distances = np.linalg.norm(waypoints - position, axis=1)
         idx_nearest_waypoint = np.argmin(distances)
         return idx_nearest_waypoint
@@ -316,3 +316,4 @@ class PP_Controller:
             if abs(arr[i] - val) < abs(arr[idx] - val):
                 idx = i
         return idx
+
