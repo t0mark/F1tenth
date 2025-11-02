@@ -822,6 +822,7 @@ def load_data_from_bag(
                 time=stamp_sec,
                 x=float(pose.position.x),
                 y=float(pose.position.y),
+                y=float(pose.position.y),
                 yaw=_quaternion_to_yaw(
                     float(pose.orientation.x),
                     float(pose.orientation.y),

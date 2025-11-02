@@ -40,7 +40,7 @@ def generate_launch_description():
         package='tf2_ros',
         executable='static_transform_publisher',
         name='static_baselink_to_camera',
-        arguments=['0.27', '0.0', '0.11', '0.0', '0.0', '0.0', 'base_link', 'camera_base_link'],
+        arguments=['0.27', '0.0', '0.11', '-1.5707963', '-1.5707963', '0.0', 'base_link', 'camera_base_link'],
         output='screen'
     )
 
