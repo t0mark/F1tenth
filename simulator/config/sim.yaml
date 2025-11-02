@@ -59,6 +59,6 @@ bridge:
     stheta1: 0.0
 
     # dynamic obstacle defaults
-    obstacle_length: 0.12
-    obstacle_width: 0.1
+    obstacle_length: 0.25
+    obstacle_width: 0.25
     obstacle_height: 0.2
