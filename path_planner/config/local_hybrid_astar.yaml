@@ -1,4 +1,4 @@
-# Hybrid A* Local Planner configuration
+# Hybrid A* Local Planner configuration (Map-based Enhanced)
 
 local_planner:
   ros__parameters:
@@ -11,33 +11,58 @@ local_planner:
     odom_topic: '/odom'
     output_topic: '/local_path'
     costmap_topic: '/local_costmap'
+    static_map_topic: '/map'
     publish_costmap: true
 
     # Frames
     map_frame: 'map'
     base_frame: 'base_link'
 
-    # Costmap configuration
-    grid_resolution: 0.25        # meters per cell
-    grid_width: 20.0             # meters
-    grid_height: 20.0            # meters
-    inflation_radius: 0.5        # meters
-    vehicle_radius: 0.35         # meters
+    # Costmap configuration (동적 장애물용 - LiDAR 기반)
+    # 코스트맵 해상도 (m/cell), 작을수록 정밀하지만 느림
+    grid_resolution: 0.2
+    # 코스트맵 너비 (m), 로봇 중심 기준
+    grid_width: 7.0
+    # 코스트맵 높이 (m), 로봇 중심 기준
+    grid_height: 7.0
+    # 장애물 팽창 반경 (m), 안전 마진 확보
+    inflation_radius: 0.01
+    # 차량 반경 (m), 충돌 체크용
+    vehicle_radius: 0.35
 
     # Planner configuration
-    heading_bins: 72
+    # 방향 이산화 개수 (360°/n), 많을수록 정밀
+    heading_bins: 60
+    # 조향각 샘플 개수, 많을수록 부드럽지만 느림
     num_steering_samples: 5
-    max_steering_angle: 0.6      # radians
-    wheelbase: 0.33              # meters
-    step_size: 0.6               # meters
-    lookahead_distance: 8.0      # meters
-    goal_tolerance: 0.6          # meters
-    goal_yaw_tolerance_deg: 30.0 # degrees
-    planner_hz: 5.0
-    max_iterations: 4000
+    # 최대 조향각 (rad = 22.9°), 차량 한계치
+    max_steering_angle: 0.4
+    # 차축 거리 (m), 회전반경 계산용
+    wheelbase: 0.33
+    # Hybrid A* 한 스텝 거리 (m), 작을수록 조밀하지만 느림
+    step_size: 0.4
+    # 목표점 거리 (m), 글로벌 경로에서 앞쪽 몇 m 지점을 목표로 삼을지
+    lookahead_distance: 5.0
+    # 목표 도달 판정 거리 (m), 작을수록 정밀
+    goal_tolerance: 0.5
+    # 목표 방향 도달 판정 각도 (deg), 클수록 빨리 수렴
+    goal_yaw_tolerance_deg: 35.0
+    # 플래너 실행 주기 (Hz), 높을수록 빠른 반응이지만 CPU 부하 증가
+    planner_hz: 50.0
+    # Hybrid A* 최대 반복 횟수, 많을수록 복잡한 경로 찾지만 느림
+    max_iterations: 2000
 
-    # Cost weights
-    steering_change_weight: 2.0
-    obstacle_cost_weight: 15.0
-    path_distance_weight: 1.5
-    heuristic_weight: 1.2
+    # Cost weights (핵심 튜닝 파라미터)
+    # 우선순위: 맵 외곽 회피(20) > 동적 장애물(25) > 글로벌 경로 추종(8+3) > 조향 부드러움(3)
+    # 조향 변화 페널티, 급격한 핸들 조작 방지 (부드러운 주행)
+    steering_change_weight: 3.0
+    # 동적 장애물 페널티 (LiDAR), 장애물 강력 회피
+    obstacle_cost_weight: 25.0
+    # 글로벌 경로 이탈 페널티 (g-cost), 경로 추종 강도
+    path_distance_weight: 3.0
+    # 목표점 거리 가중치, A* 탐색 방향 결정
+    heuristic_weight: 1.0
+    # 글로벌 경로 이탈 페널티 (휴리스틱), 경로 주변만 탐색하도록 유도
+    global_path_deviation_weight: 8.0
+    # 정적 맵 외곽 페널티, 트랙 밖으로 못 나가게 강제 (최우선)
+    static_map_penalty_weight: 20.0
