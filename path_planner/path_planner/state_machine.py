@@ -93,6 +93,10 @@ class StateMachine(Node):
         self.spline_hyst_timer_sec = self.get_parameter("spline_hyst_timer_sec").get_parameter_value().double_value
         self.declare_parameter("n_loc_wpnts", 50)
         self.n_loc_wpnts = self.get_parameter("n_loc_wpnts").get_parameter_value().integer_value
+        self.declare_parameter("static_velocity_threshold_mps", 0.2)
+        self.static_velocity_threshold = self.get_parameter("static_velocity_threshold_mps").get_parameter_value().double_value
+        self.declare_parameter("prediction_horizon_sec", 0.5)
+        self.prediction_horizon = self.get_parameter("prediction_horizon_sec").get_parameter_value().double_value
 
         qos = QoSProfile(
             depth=10,
@@ -127,6 +131,7 @@ class StateMachine(Node):
         self.first_visualization = True
 
         self.obstacles = []
+        self.predicted_obstacles = []  # 예측된 장애물 정보
         self.spline_ttl = 1.0 # 최악의 경우 1초 동안 스플라인을 유지합니다.
         self.spline_ttl_counter = int(self.spline_ttl * self.rate_hz)
         self.avoidance_wpnts = None
@@ -176,8 +181,56 @@ class StateMachine(Node):
     def obstacle_callback(self, msg):
         if len(msg.obstacles) == 0:
             self.obstacles = []
+            self.predicted_obstacles = []
         else:
-            self.obstacles = msg.obstacles
+            # 속도 기반 정적/동적 분류
+            classified_obstacles = []
+            predicted_obstacles = []
+
+            for obs in msg.obstacles:
+                # 속도 크기 계산 (vs: 종방향, vd: 횡방향)
+                velocity_magnitude = np.sqrt(obs.vs**2 + obs.vd**2)
+
+                # 임계값 기반 분류
+                if velocity_magnitude < self.static_velocity_threshold:
+                    obs.is_static = True
+                else:
+                    obs.is_static = False
+
+                classified_obstacles.append(obs)
+
+                # 동적 장애물 경로 예측 (등속 운동 가정)
+                if not obs.is_static:
+                    dt = self.prediction_horizon
+                    s_future = normalize_s(obs.s_center + obs.vs * dt, self.track_length)
+                    d_future = obs.d_center + obs.vd * dt
+
+                    # 예측 정보를 딕셔너리로 저장
+                    predicted_obs = {
+                        'id': obs.id,
+                        's_current': obs.s_center,
+                        'd_current': obs.d_center,
+                        's_predicted': s_future,
+                        'd_predicted': d_future,
+                        'vs': obs.vs,
+                        'vd': obs.vd,
+                        'prediction_time': dt
+                    }
+                    predicted_obstacles.append(predicted_obs)
+
+                if self.print_debug:
+                    pred_info = ""
+                    if not obs.is_static and len(predicted_obstacles) > 0:
+                        pred = predicted_obstacles[-1]
+                        pred_info = f" -> pred(s={pred['s_predicted']:.2f}, d={pred['d_predicted']:.2f})"
+
+                    self.get_logger().info(
+                        f"Obstacle {obs.id}: vel={velocity_magnitude:.2f} m/s, "
+                        f"static={obs.is_static}, s={obs.s_center:.2f}, d={obs.d_center:.2f}{pred_info}"
+                    )
+
+            self.obstacles = classified_obstacles
+            self.predicted_obstacles = predicted_obstacles
 
     
     def avoidance_cb(self, msg):
@@ -201,6 +254,10 @@ class StateMachine(Node):
     
     @property
     def _check_ofree(self) -> bool:
+        """
+        회피 경로가 장애물과 충돌하지 않는지 확인합니다.
+        동적 장애물의 경우 예측 위치도 함께 고려합니다.
+        """
         o_free = True
 
         if self.last_valid_avoidance_wpnts is not None:
@@ -208,10 +265,11 @@ class StateMachine(Node):
 
             for obs in self.obstacles:
                 obs_s = obs.s_center
-                # Wrapping madness to check if infront
+                obs_d = obs.d_center
+
+                # 현재 위치 확인
                 dist_to_obj = (obs_s - self.car_s) % self.track_length
                 if dist_to_obj < horizon and len(self.last_valid_avoidance_wpnts):
-                    obs_d = obs.d_center
                     # Get d wrt to mincurv from the overtaking line
                     avoid_wpnt_idx = np.argmin(
                         np.array([abs(avoid_s.s_m - obs_s) for avoid_s in self.last_valid_avoidance_wpnts])
@@ -221,6 +279,26 @@ class StateMachine(Node):
                     if abs(ot_obs_dist) < self.lateral_width_m:
                         o_free = False
                         break
+
+                # 동적 장애물의 경우 예측 위치도 확인
+                if not obs.is_static:
+                    # 예측된 장애물 정보 찾기
+                    pred_obs = next((p for p in self.predicted_obstacles if p['id'] == obs.id), None)
+                    if pred_obs:
+                        s_pred = pred_obs['s_predicted']
+                        d_pred = pred_obs['d_predicted']
+
+                        dist_to_pred = (s_pred - self.car_s) % self.track_length
+                        if dist_to_pred < horizon:
+                            # 예측 위치에서의 회피 경로 확인
+                            avoid_wpnt_idx_pred = np.argmin(
+                                np.array([abs(avoid_s.s_m - s_pred) for avoid_s in self.last_valid_avoidance_wpnts])
+                            )
+                            ot_d_pred = self.last_valid_avoidance_wpnts[avoid_wpnt_idx_pred].d_m
+                            ot_obs_dist_pred = ot_d_pred - d_pred
+                            if abs(ot_obs_dist_pred) < self.lateral_width_m:
+                                o_free = False
+                                break
         else:
             o_free = True
         return o_free    
@@ -242,7 +320,68 @@ class StateMachine(Node):
                     break
 
         return gb_free
-    
+
+    @property
+    def _check_static_obstacle_ahead(self) -> bool:
+        """전방에 정적 장애물이 있는지 확인합니다."""
+        horizon = self.overtaking_horizon_m
+
+        for obs in self.obstacles:
+            if obs.is_static:
+                obs_s = obs.s_center
+                gap = (obs_s - self.car_s) % self.track_length
+                if gap < horizon:
+                    obs_d = obs.d_center
+                    if abs(obs_d) < self.lateral_width_m:
+                        return True
+        return False
+
+    def _get_closest_dynamic_obstacle(self):
+        """전방의 가장 가까운 동적 장애물을 반환합니다."""
+        horizon = self.overtaking_horizon_m
+        closest_obs = None
+        min_gap = float('inf')
+
+        for obs in self.obstacles:
+            if not obs.is_static:
+                obs_s = obs.s_center
+                gap = (obs_s - self.car_s) % self.track_length
+                if gap < horizon and gap < min_gap:
+                    obs_d = obs.d_center
+                    if abs(obs_d) < self.lateral_width_m:
+                        closest_obs = obs
+                        min_gap = gap
+
+        return closest_obs, min_gap
+
+    @property
+    def _check_need_overtake(self) -> bool:
+        """
+        추월이 필요한지 판단합니다.
+        - 정적 장애물: 즉시 True
+        - 동적 장애물: 상대 속도가 음수이거나 목표 속도보다 현저히 낮으면 True
+        """
+        horizon = self.overtaking_horizon_m
+
+        for obs in self.obstacles:
+            obs_s = obs.s_center
+            gap = (obs_s - self.car_s) % self.track_length
+
+            if gap < horizon:
+                obs_d = obs.d_center
+                if abs(obs_d) < self.lateral_width_m:
+                    # 정적 장애물: 즉시 추월 필요
+                    if obs.is_static:
+                        return True
+
+                    # 동적 장애물: 상대 속도 확인
+                    # 상대 차량의 종방향 속도가 현저히 느리면 추월 필요
+                    target_velocity = self.gb_vmax * 0.7  # 목표 속도의 70%
+                    if obs.vs < target_velocity:
+                        return True
+
+        return False
+
     @property
     def _check_availability_spline_wpts(self) -> bool:
         if self.avoidance_wpnts is None:

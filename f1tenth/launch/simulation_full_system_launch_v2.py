@@ -50,6 +50,13 @@ def generate_launch_description():
                 name='opponent_detection',
                 output='screen'
             ),
+            # Opponent Tracking Node
+            Node(
+                package='path_planner',
+                executable='opponent_tracking_node',
+                name='opponent_tracking',
+                output='screen'
+            ),
             # Spline Planner Node
             Node(
                 package='path_planner',

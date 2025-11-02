@@ -46,165 +46,53 @@ python3 src/path_planner/scripts/width_left_right_creator.py
   </div>
 </div>
 
----
 
-# 시스템 아키텍처 및 데이터 플로우
 
-## 전체 시스템 플로우
+# 장애물 회피 및 추월 경로 계획
+
+1. opponent_detection_node(opponent_detection.py)
+LiDAR 센서와 차량의 위치를 데이터를 사용하여 트랙위의 상대 차량을 감지합니다.
+
+- LiDAR 스캔 데이터를 포인트 클라우드로 변환하고, 이를 개별 객체로 군집화 합니다.
+- 군집화된 장애물의 위치, 크기, 방향 등의 정보를 프레네(Frenet) 좌표계로 변환하여 /preception/obstacels 토픽으로 발행합니다.
+- 시각화 토픽 : /perception/obstacels_markers_new
+
+2. spliner_node(spliner.py)
+opponent_detection_node가 감지한 장애물 정보를 바탕으로 회피 경로를 생성합니다. 
+
+- /perception/obstacels 토피을 구독하여 장애물 정보 받기
+- 가장 가까운 장애물을 기준으로, 안전 거리를 확보하며 부드러운 회피 경로를 3차 스플라인으로 생성
+- 회피 경로는 7개의 제어점(장애물 3개, 장애물 위치1개, 장애물 후 3개)을 사용하여 계산되며, 차량의 현재 속도와 추월 방향(바깥 경로 , 안쪽 경로) 에 따라 동적으로 조정 됩니다.
+- 생성된 회피 경로는 /planner/avoidance/otwpnts 토픽으로 발행 시각화 
+
+3. state_machine_node(state_machine.py, state_helpers.py)
+차량의 현재 상태를 결정하고, 그에 맞는 주행 경로(Local waypoints)를 생성한다.
+
+- 차량의 상태를 GB_TRACK(기본 주행), OVERTAKE, TRAILING 으로 구분합니다. 
+- spliner_node로부터 받은 회피 경로(/planner/avoidance/otwpnts)와 장애물 정보(/perception/obstacles)를 바탕으로 상태를 전환할지 결정합니다. (예: 전방에 장애물이 있고 회피 경로가 유효하면 OVERTAKE 상태로 전환합니다.)
+- 현재 상태에 따라 최종적으로 따라야 할 지역 경로(Local Waypoints)를 결정합니다.
+- GB_TRACK 상태: 미리 정의된 최적의 글로벌 경로를 따라갑니다.
+- OVERTAKE 상태: spliner_node가 생성한 회피 경로와 글로벌 경로를 융합하여 따라갑니다.
+- 결정된 지역 경로는 /state_machine/local_waypoints 토픽으로 발행되어 controller_node로 전달됩니다.
+- 현재 차량의 상태를 /state_machine/state 토픽으로 발행하고, Rviz에 시각화합니다.
+
+4. controller_node (controller.py)
+   * 역할: state_machine_node로부터 받은 지역 경로를 따라 차량을 실제로 제어(조향 및 속도)합니다.
+   * 주요 기능:
+       * /state_machine/local_waypoints 토픽을 구독하여 주행할 경로를 받습니다.
+       * Pure Pursuit 알고리즘을 사용하여 경로를 따라가기 위한 목표 조향각과 속도를 계산합니다.
+       * 차량의 현재 위치( /odom ), 상태( /state_machine/state ), 장애물 정보( /perception/obstacles )를
+         모두 고려하여 제어 값을 결정합니다.
+           * 예: TRAILING 상태에서는 앞 차와의 거리를 유지하도록 속도를 조절합니다.
+       * 계산된 최종 제어 명령(속도, 조향각)을 /drive 토픽으로 발행하여 시뮬레이터의 차량을 움직입니다.
+       * Pure Pursuit 알고리즘의 Lookahead 지점을 Rviz에 시각화하여 디버깅을 돕습니다.
+
+
+
 
 ```
-spliner.py → state_machine.py → controller.py → pure_pursuit.py
-(회피경로 생성)  (경로 융합)     (local_waypoints 수신)  (속도 추종)
-```
+# 추가 설치
+pip install "numpy>=1.21,<1.24" "scikit-image>=0.18,<0.22" filterpy
 
-### 1. spliner.py (회피 경로 생성)
-- 장애물 감지 및 회피 경로 스플라인 생성
-- **회피 경로 전용 속도 스케일링 적용**
-  - 외측 추월: 글로벌 속도 × 1.1 (안전)
-  - 내측 추월: 글로벌 속도 × 0.8 (위험)
-- 토픽: `/planner/avoidance/otwpnts` (OTWpntArray)
 
-### 2. state_machine.py (경로 융합 및 상태 관리)
-- 3가지 상태 관리: `GB_TRACK`, `TRAILING`, `OVERTAKE`
-- 회피 경로와 글로벌 경로 융합 (`get_spline_wpts()`)
-- 토픽: `/state_machine/local_waypoints` (WpntArray)
-
-### 3. controller.py (컨트롤러 노드)
-- local_waypoints 구독
-- Pure Pursuit 컨트롤러 호출
-- 토픽: `/drive` (AckermannDriveStamped)
-
-### 4. pure_pursuit.py (주행 제어)
-- L1 거리 계산: `L1 = q_l1 + speed × m_l1`
-- 횡방향 오차 기반 속도 조정
-- TRAILING 상태 시 PD 제어
-
----
-
-## 상태별 속도 정의 차이
-
-### GB_TRACK (글로벌 트래킹)
-- **속도 소스**: `final_waypoints.csv` 원본 속도
-- **경로**: 최적화된 레이싱 라인
-- **lookahead**: 기본 파라미터 (m_l1=0.65, q_l1=-0.65)
-
-### OVERTAKE (회피)
-- **속도 소스**: CSV 속도 × 스케일링 (0.8 ~ 1.1배)
-- **경로**: 스플라인 회피 경로 (0.25m 해상도)
-- **특징**:
-  - 코너 곡률(kappa) 분석으로 외측/내측 판단
-  - 외측 추월 시 1.1배 증속 (안정적)
-  - 내측 추월 시 0.8배 감속 (위험)
-
-### TRAILING (추종)
-- **속도 소스**: 회피 구간은 스플라인 속도, 나머지는 CSV 속도
-- **경로**: 회피 + 글로벌 융합
-- **제어**: PD 제어로 목표 간격 1m 유지
-  - P gain: 0.5
-  - D gain: 0.5
-
----
-
-## 경로 융합 로직 (state_machine.py)
-
-```python
-def get_spline_wpts(self):
-    spline_glob = self.glb_wpnts.copy()  # 글로벌 복사
-
-    # 회피 구간 인덱스 범위 계산
-    s_start_idx = find_closest_index(wpnts_s_array, avoidance_wpnts[0].s_m)
-    s_end_idx = find_closest_index(wpnts_s_array, avoidance_wpnts[-1].s_m)
-
-    # 회피 구간만 교체 (속도 포함)
-    for idx in spline_idxs:
-        current_s = self.wpnts_s_array[idx]
-        closest_avoid_idx = np.argmin(
-            np.abs([wpnt.s_m - current_s for wpnt in avoidance_wpnts])
-        )
-        spline_glob[idx] = avoidance_wpnts[closest_avoid_idx]  # ← 속도 교체!
-
-    return spline_glob
-```
-
-**핵심**:
-- 글로벌 waypoints (~0.03m 간격)
-- 회피 waypoints (~0.25m 간격, 8배 성김)
-- 회피 구간만 Nearest Neighbor로 교체
-
----
-
-## Pure Pursuit Lookahead 파라미터
-
-### L1 Distance 계산
-```
-L1 = q_l1 + speed × m_l1
-L1_clipped = clip(L1, t_clip_min, t_clip_max)
-```
-
-### 현재 파라미터 (controller.py)
-| 파라미터 | 값 | 단위 | 설명 |
-|---------|-----|-----|------|
-| m_l1 | 0.65 | 초 | 속도 비례 계수 |
-| q_l1 | -0.65 | m | 고정 오프셋 (음수) |
-| t_clip_min | 1.0 | m | 최소 lookahead |
-| t_clip_max | 7.0 | m | 최대 lookahead |
-
-### 속도별 Lookahead 거리
-
-| 속도 (m/s) | 계산값 (m) | 클리핑 후 (m) |
-|-----------|-----------|--------------|
-| 1.0 | -0.00 | 1.0 (min) |
-| 3.0 | 1.30 | 1.30 |
-| 5.0 | 2.60 | 2.60 |
-| 8.0 | 4.55 | 4.55 |
-| 10.0 | 5.85 | 5.85 |
-| 12.0 | 7.15 | 7.0 (max) |
-
----
-
-## 롤링 문제 원인 분석
-
-### 회피 경로에서 롤링이 심한 이유
-
-1. **속도 급변**
-   - 글로벌(CSV) → 회피(0.8배) → 글로벌(CSV)
-   - 예: 5m/s → 4m/s → 5m/s
-
-2. **Lookahead 거리 단축**
-   - 회피 시 속도 감소 → L1 거리 감소
-   - 5m/s: L1=2.6m → 4m/s: L1=1.95m (25% 감소)
-   - 짧은 lookahead → 급격한 조향
-
-3. **회피 경로의 낮은 해상도**
-   - 글로벌: ~0.03m 간격
-   - 회피: ~0.25m 간격 (8배 성김)
-   - 성긴 waypoints → 조향 떨림
-
-### 해결 방안
-
-#### 방안 1: Lookahead 파라미터 증가
-```python
-# controller.py에서 수정
-self.declare_parameter('m_l1', 0.8)      # 0.65 → 0.8
-self.declare_parameter('q_l1', 0.5)      # -0.65 → 0.5
-self.declare_parameter('t_clip_min', 2.5) # 1.0 → 2.5
-self.declare_parameter('t_clip_max', 12.0) # 7.0 → 12.0
-```
-
-#### 방안 2: 회피 경로 전용 Lookahead 추가
-```python
-# 상태별 다른 lookahead 파라미터 사용
-if self.state == StateType.OVERTAKE:
-    L1_distance = self.q_l1_overtake + self.speed_now * self.m_l1_overtake
-else:
-    L1_distance = self.q_l1 + self.speed_now * self.m_l1
-```
-
-#### 방안 3: 속도 스케일링 완화
-```python
-# spliner.py에서 수정
-# 현재: 1.1배 / 0.8배 (30% 차이)
-# 권장: 1.05배 / 0.9배 (15% 차이)
-vi = self.waypoints_v[gb_wpnt_i] * 1.05 if outside == more_space \
-     else self.waypoints_v[gb_wpnt_i] * 0.9
 ```

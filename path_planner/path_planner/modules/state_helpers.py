@@ -82,31 +82,54 @@ def head_to_head_transition(state_machine)->str:
 
 
 def SplineGlobalTrackingTransition(state_machine) -> StateType:
-    """`StateType.GB_TRACK` 상태에서의 전이 조건."""
+    """`StateType.GB_TRACK` 상태에서의 전이 조건.
+
+    개선된 로직:
+    - 정적 장애물 발견: 즉시 추월 기회 확인
+    - 동적 장애물 발견: TRAILING으로 전이 후 상황 평가
+    """
     if state_machine._check_gbfree:
         return StateType.GB_TRACK
-    else:
-        return StateType.TRAILING
+
+    # 정적 장애물이 있고 추월 가능하면 바로 OVERTAKE
+    if state_machine._check_static_obstacle_ahead:
+        if (state_machine._check_ot_sector and
+            state_machine._check_availability_spline_wpts and
+            state_machine._check_ofree):
+            return StateType.OVERTAKE
+
+    # 그 외의 경우 TRAILING으로 전이
+    return StateType.TRAILING
 
 
 def SplineTrailingTransition(state_machine) -> StateType:
-    """`StateType.TRAILING` 상태에서의 전이 조건."""
+    """`StateType.TRAILING` 상태에서의 전이 조건.
+
+    개선된 로직:
+    - GB_FREE이면 레이스라인 복귀
+    - 추월 필요성 판단: 정적 장애물 또는 느린 동적 장애물
+    - 추월 필요하고 안전하면 OVERTAKE로 전이
+    - 그 외에는 안전거리 유지하며 TRAILING
+    """
     gb_free = state_machine._check_gbfree
     ot_sector = state_machine._check_ot_sector
 
-    if not gb_free and not ot_sector:
-        return StateType.TRAILING
-    elif gb_free and state_machine._check_close_to_raceline:
+    # GB가 비어있고 레이스라인에 가까우면 복귀
+    if gb_free and state_machine._check_close_to_raceline:
         return StateType.GB_TRACK
-    elif (
-        not gb_free
-        and ot_sector
-        and state_machine._check_availability_spline_wpts
-        and state_machine._check_ofree
-    ):
+
+    # 추월 필요성 판단 (정적 또는 느린 동적 장애물)
+    need_overtake = state_machine._check_need_overtake
+
+    # 추월이 필요하고 안전한 추월 경로가 있으면 OVERTAKE
+    if (need_overtake and
+        ot_sector and
+        state_machine._check_availability_spline_wpts and
+        state_machine._check_ofree):
         return StateType.OVERTAKE
-    else:
-        return StateType.TRAILING
+
+    # 그 외에는 TRAILING 유지 (안전거리 유지)
+    return StateType.TRAILING
 
 
 def SplineOvertakingTransition(state_machine) -> StateType:
