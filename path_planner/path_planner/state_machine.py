@@ -385,26 +385,20 @@ class StateMachine(Node):
 
     def _more_space(self, obstacle: ObstacleMsg, opp_wpnt_idx: int) -> Tuple[str, float]:
         """
-        장애물 주변의 가용 공간(면적)과 차량의 횡방향 움직임을 고려하여 최적의 회피/추월 방향을 결정합니다.
+        장애물 위치에서의 좌우 여백(width_left_m, width_right_m)을 직접 비교하여 최적의 회피/추월 방향을 결정합니다.
         """
-        # 1. 면적 기반 공간 계산
-        horizon = 5.0  # TODO: 파라미터화
-        area_left, area_right = self._calculate_overtake_area(obstacle, self.car_s, horizon)
+        # final_waypoints.csv의 width_left_m, width_right_m 값을 직접 사용
+        available_left = self.wpnts_d_left_array[opp_wpnt_idx]
+        available_right = self.wpnts_d_right_array[opp_wpnt_idx]
 
-        # 2. 차량의 횡방향 속도(car_vd)를 고려하여 선호하는 방향을 결정합니다.
-        vd_threshold = 0.1  # 횡방향 속도 임계값 (m/s)
-        
         d_apex_left = obstacle.d_center + self.lateral_width_m
         d_apex_right = obstacle.d_center - self.lateral_width_m
 
         d_apex_left = min(d_apex_left, self.wpnts_d_left_array[opp_wpnt_idx] - self.gb_ego_width_m)
         d_apex_right = max(d_apex_right, -self.wpnts_d_right_array[opp_wpnt_idx] + self.gb_ego_width_m)
 
-        if area_left > area_right and self.car_vd >= -vd_threshold:
-            return "left", d_apex_left
-        elif area_right > area_left and self.car_vd <= vd_threshold:
-            return "right", d_apex_right
-        elif area_left > area_right:
+        # 단순히 좌우 여백을 비교하여 더 넓은 쪽 선택
+        if available_left < available_right:
             return "left", d_apex_left
         else:
             return "right", d_apex_right

@@ -32,7 +32,7 @@ def _yaw_from_quaternion(qx: float, qy: float, qz: float, qw: float) -> float:
     return math.atan2(2.0 * (qw * qz + qx * qy), 1 - 2.0 * (qy * qy + qz * qz))
 
 
-def _calculate_smooth_speed_profile(kappas, max_speed=4.0, min_speed=1.0, sigma=1):
+def _calculate_smooth_speed_profile(kappas, max_speed=3.0, min_speed=1.0, sigma=1):
     """곡률 기반으로 속도 계산 후 가우시안 필터로 스무딩"""
     if len(kappas) == 0 or np.all(kappas == 0):
         return np.full(len(kappas), max_speed)
