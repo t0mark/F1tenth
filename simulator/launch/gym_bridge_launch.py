@@ -35,9 +35,6 @@ def generate_launch_description():
 
     # 상대 차량 존재 여부
     has_opp = config_dict['bridge']['ros__parameters']['num_agent'] > 1
-    # 키보드 조작 여부
-    teleop = config_dict['bridge']['ros__parameters']['kb_teleop']
-
     # 맵 경로 결정 (런치 인자가 제공되면 사용, 아니면 설정 파일 사용)
     # LaunchConfiguration은 런타임에 평가되므로 직접 비교 불가
     # 따라서 PythonExpression과 OpaqueFunction 사용 필요

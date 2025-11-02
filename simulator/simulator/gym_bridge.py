@@ -5,7 +5,6 @@ from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped
 from geometry_msgs.msg import PoseWithCovarianceStamped
-from geometry_msgs.msg import Twist
 from geometry_msgs.msg import TransformStamped
 from geometry_msgs.msg import Transform
 from geometry_msgs.msg import PointStamped
@@ -112,7 +111,6 @@ class GymBridge(Node):
             'sx1': 2.0,
             'sy1': 0.5,
             'stheta1': 0.0,
-            'kb_teleop': True,
             'obstacle_length': 0.12,
             'obstacle_width': 0.1,
             'obstacle_height': 0.2,
@@ -283,10 +281,6 @@ class GymBridge(Node):
         self.clicked_point_sub = self.create_subscription(
             PointStamped, '/clicked_point', self.clicked_point_callback, 10)
 
-        if self.get_parameter('kb_teleop').value:
-            self.teleop_sub = self.create_subscription(
-                Twist, '/cmd_vel', self.teleop_callback, 10)
-
         # 타이머: 시뮬레이션 스텝(100Hz) / 퍼블리시 루프(250Hz)
         self.drive_timer = self.create_timer(0.01, self.drive_timer_callback)
         self.timer = self.create_timer(0.004, self.timer_callback)
@@ -317,25 +311,6 @@ class GymBridge(Node):
         - 목적: 텔레옵 토픽을 통해 상대 차량 제어
         """
         self.opp_drive_callback(drive_msg)
-
-    def teleop_callback(self, twist_msg):
-        """
-        키보드 텔레오퍼레이션 콜백 (옵션)
-        - 목적: /cmd_vel을 통해 간단한 전/후진 및 좌/우 조향을 ego에 반영
-        - 입력: geometry_msgs/Twist (linear.x [m/s], angular.z [rad])
-        - 텔레오프 사용 시에도 정식 Ackermann 명령(조향 모델 제어)과 동일하게 drive_timer에서 스텝이 진행됨
-        """
-        if not self.ego_drive_published:
-            self.ego_drive_published = True
-
-        self.ego_requested_speed = twist_msg.linear.x
-
-        if twist_msg.angular.z > 0.0:
-            self.ego_steer = 0.3
-        elif twist_msg.angular.z < 0.0:
-            self.ego_steer = -0.3
-        else:
-            self.ego_steer = 0.0
 
     def _reset_environment(self, poses):
         """
