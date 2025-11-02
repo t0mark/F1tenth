@@ -2,6 +2,7 @@
 
 import rclpy
 import numpy as np
+from typing import Tuple
 from builtin_interfaces.msg import Time
 from rclpy.node import Node
 from rclpy.qos import (
@@ -14,7 +15,7 @@ from scipy.spatial.transform import Rotation
 from std_msgs.msg import String
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped
-from f1tenth_icra_race_msgs.msg import ObstacleArray, OTWpntArray, WpntArray, Wpnt
+from f1tenth_icra_race_msgs.msg import ObstacleArray, ObstacleMsg, OTWpntArray, WpntArray, Wpnt
 from visualization_msgs.msg import Marker, MarkerArray
 from .modules import utils, frenet_conversion, state_helpers
 from tf_transformations import euler_from_quaternion
@@ -93,8 +94,6 @@ class StateMachine(Node):
         self.spline_hyst_timer_sec = self.get_parameter("spline_hyst_timer_sec").get_parameter_value().double_value
         self.declare_parameter("n_loc_wpnts", 50)
         self.n_loc_wpnts = self.get_parameter("n_loc_wpnts").get_parameter_value().integer_value
-        self.declare_parameter("static_velocity_threshold_mps", 0.5)
-        self.static_velocity_threshold = self.get_parameter("static_velocity_threshold_mps").get_parameter_value().double_value
         self.declare_parameter("prediction_horizon_sec", 0.5)
         self.prediction_horizon = self.get_parameter("prediction_horizon_sec").get_parameter_value().double_value
 
@@ -176,6 +175,14 @@ class StateMachine(Node):
         s, d = self.converter.get_frenet(np.array([self.car_global_x]), np.array([self.car_global_y]))
         self.car_s = normalize_s(s[0], self.track_length)
         self.car_d = d[0]
+        # 차량의 프레네 속도 (vs: 종방향, vd: 횡방향)를 계산합니다.
+        vs, vd = self.converter.get_frenet_velocities(
+            np.array([pose_msg.twist.twist.linear.x]),
+            np.array([pose_msg.twist.twist.linear.y]),
+            self.car_global_yaw
+        )
+        self.car_vs = vs[0]
+        self.car_vd = vd[0]
 
 
     def obstacle_callback(self, msg):
@@ -183,22 +190,11 @@ class StateMachine(Node):
             self.obstacles = []
             self.predicted_obstacles = []
         else:
-            # 속도 기반 정적/동적 분류
-            classified_obstacles = []
+            # opponent_tracking에서 이미 is_static이 설정되어 있으므로
+            # 그 값을 신뢰하고 예측만 수행합니다
             predicted_obstacles = []
 
             for obs in msg.obstacles:
-                # 속도 크기 계산 (vs: 종방향, vd: 횡방향)
-                velocity_magnitude = np.sqrt(obs.vs**2 + obs.vd**2)
-
-                # 임계값 기반 분류
-                if velocity_magnitude < self.static_velocity_threshold:
-                    obs.is_static = True
-                else:
-                    obs.is_static = False
-
-                classified_obstacles.append(obs)
-
                 # 동적 장애물 경로 예측 (등속 운동 가정)
                 if not obs.is_static:
                     dt = self.prediction_horizon
@@ -219,6 +215,7 @@ class StateMachine(Node):
                     predicted_obstacles.append(predicted_obs)
 
                 if self.print_debug:
+                    velocity_magnitude = np.sqrt(obs.vs**2 + obs.vd**2)
                     pred_info = ""
                     if not obs.is_static and len(predicted_obstacles) > 0:
                         pred = predicted_obstacles[-1]
@@ -229,7 +226,7 @@ class StateMachine(Node):
                         f"static={obs.is_static}, s={obs.s_center:.2f}, d={obs.d_center:.2f}{pred_info}"
                     )
 
-            self.obstacles = classified_obstacles
+            self.obstacles = list(msg.obstacles)  # 이미 분류된 장애물 리스트
             self.predicted_obstacles = predicted_obstacles
 
     
@@ -323,7 +320,9 @@ class StateMachine(Node):
 
     @property
     def _check_static_obstacle_ahead(self) -> bool:
-        """전방에 정적 장애물이 있는지 확인합니다."""
+        """
+        전방에 정적 장애물이 있는지 확인합니다.
+        """
         horizon = self.overtaking_horizon_m
 
         for obs in self.obstacles:
@@ -336,8 +335,84 @@ class StateMachine(Node):
                         return True
         return False
 
+    def _calculate_overtake_area(self, obstacle: ObstacleMsg, car_s: float, horizon: float) -> Tuple[float, float]:
+        """
+        장애물 전방의 경로를 따라 좌/우 가용 공간의 총합(면적)을 계산합니다.
+        """
+        area_left = 0.0
+        area_right = 0.0
+
+        # 장애물 s_center를 기준으로 전방 horizon까지의 웨이포인트를 탐색합니다.
+        # car_s를 기준으로 하는 것이 아니라, 장애물 s_center를 기준으로 해야 합니다.
+        # 장애물 s_center에서 시작하여 horizon만큼 앞까지
+        start_s_for_area = obstacle.s_center
+        end_s_for_area = normalize_s(start_s_for_area + horizon, self.track_length)
+
+        # 웨이포인트 인덱스 범위 계산
+        start_idx = utils.find_closest_index(self.wpnts_s_array, start_s_for_area)
+        end_idx = utils.find_closest_index(self.wpnts_s_array, end_s_for_area)
+
+        # 랩어라운드 처리
+        if start_idx <= end_idx:
+            indices = np.arange(start_idx, end_idx + 1)
+        else:
+            indices = np.concatenate((np.arange(start_idx, self.gb_max_idx), np.arange(0, end_idx + 1)))
+
+        # 각 웨이포인트에서 가용 공간 계산 및 합산
+        for idx in indices:
+            wpnt_s = self.wpnts_s_array[idx]
+            wpnt_d_left = self.wpnts_d_left_array[idx]
+            wpnt_d_right = self.wpnts_d_right_array[idx]
+
+            # 장애물의 d_center를 기준으로 가용 공간 계산
+            # 장애물이 차지하는 d 범위: [obstacle.d_center - obstacle.size / 2, obstacle.d_center + obstacle.size / 2]
+            # 단순화를 위해 obstacle.d_left, obstacle.d_right 사용
+
+            # 왼쪽 가용 공간: 트랙 왼쪽 경계 - 장애물 왼쪽 경계
+            # 장애물이 트랙 왼쪽에 걸쳐있지 않다면, 트랙 왼쪽 경계까지 모두 가용 공간
+            available_left = wpnt_d_left - (obstacle.d_center + obstacle.size / 2)
+            if available_left > 0:
+                area_left += available_left
+
+            # 오른쪽 가용 공간: 장애물 오른쪽 경계 - 트랙 오른쪽 경계
+            # 장애물이 트랙 오른쪽에 걸쳐있지 않다면, 트랙 오른쪽 경계까지 모두 가용 공간
+            available_right = (obstacle.d_center - obstacle.size / 2) - (-wpnt_d_right)
+            if available_right > 0:
+                area_right += available_right
+        
+        return area_left, area_right
+
+
+    def _more_space(self, obstacle: ObstacleMsg, opp_wpnt_idx: int) -> Tuple[str, float]:
+        """
+        장애물 주변의 가용 공간(면적)과 차량의 횡방향 움직임을 고려하여 최적의 회피/추월 방향을 결정합니다.
+        """
+        # 1. 면적 기반 공간 계산
+        horizon = 5.0  # TODO: 파라미터화
+        area_left, area_right = self._calculate_overtake_area(obstacle, self.car_s, horizon)
+
+        # 2. 차량의 횡방향 속도(car_vd)를 고려하여 선호하는 방향을 결정합니다.
+        vd_threshold = 0.1  # 횡방향 속도 임계값 (m/s)
+        
+        d_apex_left = obstacle.d_center + self.lateral_width_m
+        d_apex_right = obstacle.d_center - self.lateral_width_m
+
+        d_apex_left = min(d_apex_left, self.wpnts_d_left_array[opp_wpnt_idx] - self.gb_ego_width_m)
+        d_apex_right = max(d_apex_right, -self.wpnts_d_right_array[opp_wpnt_idx] + self.gb_ego_width_m)
+
+        if area_left > area_right and self.car_vd >= -vd_threshold:
+            return "left", d_apex_left
+        elif area_right > area_left and self.car_vd <= vd_threshold:
+            return "right", d_apex_right
+        elif area_left > area_right:
+            return "left", d_apex_left
+        else:
+            return "right", d_apex_right
+
     def _get_closest_dynamic_obstacle(self):
-        """전방의 가장 가까운 동적 장애물을 반환합니다."""
+        """
+        전방의 가장 가까운 동적 장애물을 반환합니다.
+        """
         horizon = self.overtaking_horizon_m
         closest_obs = None
         min_gap = float('inf')

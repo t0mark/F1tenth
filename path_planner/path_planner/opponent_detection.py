@@ -158,14 +158,25 @@ class OpponentDetection(Node):
             "min_2_points_dist").get_parameter_value().double_value
 
         # 위 파라미터를 동적이 아닌 조정 가능한 형태로 유지합니다.
+        # 장애물에 포함될 최소 포인트 수 (단위: 포인트)
         self.declare_parameter('min_obs_size', 10, descriptor=ParameterDescriptor(
             description="minimum number of points in an obstacle")
         )
-        self.declare_parameter('max_obs_size', 0.5, descriptor=ParameterDescriptor(
+        # 장애물의 최대 크기 (단위: 미터)
+        self.declare_parameter('max_obs_size', 0.6, descriptor=ParameterDescriptor(
             description="maximum size of an obstacle in m"),
         )
-        self.declare_parameter('max_viewing_distance', 9.0, descriptor=ParameterDescriptor(
+        # 라이다의 최대 시야 거리 (단위: 미터)
+        self.declare_parameter('max_viewing_distance', 5.0, descriptor=ParameterDescriptor(
             description="maximum viewing distance of the lidar in m"),
+        )
+        # 트랙 경계 안쪽으로 벽으로 간주할 마진 (단위: 미터)
+        self.declare_parameter('track_boundary_margin', 0.25, descriptor=ParameterDescriptor(
+            description="margin inside track boundary to consider as wall in m"),
+        )
+        # 중심선으로부터 장애물을 사전 필터링할 거리 (단위: 미터)
+        self.declare_parameter('centerline_filter_distance', 0.5, descriptor=ParameterDescriptor(
+            description="distance from centerline to pre-filter obstacles in m"),
         )
         
         self.min_obs_size = self.get_parameter(
@@ -174,6 +185,10 @@ class OpponentDetection(Node):
             'max_obs_size').get_parameter_value().double_value
         self.max_viewing_distance = self.get_parameter(
             'max_viewing_distance').get_parameter_value().double_value
+        self.track_boundary_margin = self.get_parameter(
+            'track_boundary_margin').get_parameter_value().double_value
+        self.centerline_filter_distance = self.get_parameter(
+            'centerline_filter_distance').get_parameter_value().double_value
         
 
         # --- 변수 ---
@@ -328,10 +343,8 @@ class OpponentDetection(Node):
         objects_pointcloud_list = [np.array(cloudPoints_list)[indices].tolist() for indices in split_indices]
 
         # ------------------------------------------------
-        # 지나치게 작거나 크고, 중심이 트랙 위에 없는
-        # 포인트 클라우드를 제거합니다.
-        # ------------------------------------------------
-
+        # 1단계: 중심선 근접도, 최소 크기, 최대 시야 거리로 후보군을 필터링합니다.
+        # 이 단계에서는 트랙의 실제 폭 대신, 중심선 기준의 고정된 거리(0.5m)를 사용합니다.
         x_points = []
         y_points = []
         for obs in objects_pointcloud_list:
@@ -341,11 +354,17 @@ class OpponentDetection(Node):
             y_points.append(mean_y_pos)
         s_points, d_points = self.frenet_converter.get_frenet(np.array(x_points), np.array(y_points))
 
-        # 리스트 컴프리헨션으로 효율적으로 필터링합니다.
-        objects_pointcloud_list = [
-            obj for idx, obj in enumerate(objects_pointcloud_list)
-            if len(obj) >= self.min_obs_size and self.laserPointOnTrack(s_points[idx], d_points[idx], car_s)
-        ]
+        filtered_indices = []
+        for idx, obj in enumerate(objects_pointcloud_list):
+            s = s_points[idx]
+            d = d_points[idx]
+            # 전방 시야 거리, 최소 포인트 수, 중심선 근접도 조건을 확인합니다.
+            if (len(obj) >= self.min_obs_size and
+                    normalize_s(s - car_s, self.track_length) <= self.max_viewing_distance and
+                    abs(d) <= self.centerline_filter_distance):
+                filtered_indices.append(idx)
+
+        objects_pointcloud_list = [objects_pointcloud_list[i] for i in filtered_indices]
 
         if self.plot_debug:
             markers_array = []
@@ -490,22 +509,82 @@ class OpponentDetection(Node):
 
     def checkObstacles(self, current_obstacles):
         """
-        너무 큰 장애물을 제거합니다.
+        너무 크거나 트랙을 벗어난 장애물을 제거합니다.
         """
+        self.tracked_obstacles.clear()
+        if not current_obstacles:
+            return
 
         remove_list = []
-        self.tracked_obstacles.clear()
-        for obs in current_obstacles:
-            if (obs.size > self.max_obs_size):
-                remove_list.append(obs)
+        
+        # 모든 장애물의 s, d 좌표를 한 번에 계산합니다.
+        x_centers = [obs.center_x for obs in current_obstacles]
+        y_centers = [obs.center_y for obs in current_obstacles]
+        frenet_coords = self.frenet_converter.get_frenet(np.array(x_centers), np.array(y_centers))
+        
+        # Frenet 변환 결과를 정규화합니다.
+        if frenet_coords.ndim == 1:
+            s_points = np.array([frenet_coords[0]])
+            d_points = np.array([frenet_coords[1]])
+        else:
+            s_points = frenet_coords[0]
+            d_points = frenet_coords[1]
 
+        for i, obs in enumerate(current_obstacles):
+            # 1. 크기 검증
+            if obs.size > self.max_obs_size:
+                if obs not in remove_list:
+                    remove_list.append(obs)
+                continue
+
+            # 2. 트랙 경계 검증
+            s = s_points[i]
+            d = d_points[i]
+            
+            # s 값에 해당하는 트랙 폭 인덱스를 찾습니다.
+            idx = bisect_left(self.s_array, s)
+            if idx: # if idx is not 0
+                idx -= 1
+            
+            track_width_left = self.d_left_array[idx]
+            track_width_right = self.d_right_array[idx]
+
+            # 안전 마진을 적용하여 유효 트랙 폭을 계산합니다.
+            effective_track_width_left = track_width_left - self.track_boundary_margin
+            effective_track_width_right = -track_width_right + self.track_boundary_margin
+
+            # 장애물의 좌/우 경계를 프레네 좌표계에서 계산합니다.
+            obs_d_left = d + obs.size / 2
+            obs_d_right = d - obs.size / 2
+
+            is_off_track = obs_d_left >= effective_track_width_left or obs_d_right <= effective_track_width_right
+
+#             # 디버깅 로그 추가
+#             self.get_logger().info(f"""[Obstacle Check]
+#     - Obstacle ID: {i}
+#     - Center (x, y): ({obs.center_x:.2f}, {obs.center_y:.2f})
+#     - Frenet (s, d): ({s:.2f}, {d:.2f})
+#     - Size: {obs.size:.2f}
+#     - Track Width (L, R) at s={s:.2f}: ({track_width_left:.2f}, {track_width_right:.2f})
+#     - Margin: {self.track_boundary_margin:.2f}
+#     - Effective Boundary (L, R): ({effective_track_width_left:.2f}, {effective_track_width_right:.2f})
+#     - Obstacle Edge (L, R): ({obs_d_left:.2f}, {obs_d_right:.2f})
+#     - Is Off Track?: {is_off_track}
+# """)
+
+            # 장애물이 유효 트랙 경계를 벗어났는지 확인합니다.
+            if is_off_track:
+                if obs not in remove_list:
+                    remove_list.append(obs)
+                continue
+        
+        # 유효한 장애물만 필터링합니다.
+        valid_obstacles = [obs for obs in current_obstacles if obs not in remove_list]
+        
         self.get_logger().debug(
-            f"[Opponent Detection] removed {len(remove_list)} obstacles as they are too big.")
+            f"[Opponent Detection] removed {len(remove_list)} obstacles as they are too big or off-track.")
 
-        for obs in remove_list:
-            current_obstacles.remove(obs)
-
-        for idx, curr_obs in enumerate(current_obstacles):
+        for idx, curr_obs in enumerate(valid_obstacles):
             curr_obs.id = idx
             self.tracked_obstacles.append(curr_obs)
 

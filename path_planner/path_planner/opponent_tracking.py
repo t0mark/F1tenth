@@ -233,6 +233,12 @@ class OpponentTracking(Node):
             self.get_parameter("rate").get_parameter_value().integer_value
         )
 
+        # 정적/동적 분류 임계값 -----------------------------------------
+        self.declare_parameter("static_velocity_threshold_mps", 0.5)
+        self.static_velocity_threshold = (
+            self.get_parameter("static_velocity_threshold_mps").get_parameter_value().double_value
+        )
+
         # 노이즈 파라미터 --------------------------------------------------
         self.declare_parameter("process_var_vs", 0.6)
         self.declare_parameter("process_var_vd", 0.6)
@@ -365,7 +371,11 @@ class OpponentTracking(Node):
             obs.vs = float(np.mean(self.state.vs_filt))
             obs.vd = float(np.mean(self.state.vd_filt))
             obs.size = self.state.size
-            obs.is_static = False
+
+            # 추정된 속도 기반 정적/동적 분류
+            velocity_magnitude = np.sqrt(obs.vs**2 + obs.vd**2)
+            obs.is_static = bool(velocity_magnitude < self.static_velocity_threshold)
+
             obs.s_start = (obs.s_center - obs.size / 2.0) % self.track_length
             obs.s_end = (obs.s_center + obs.size / 2.0) % self.track_length
             obs.d_right = obs.d_center - obs.size / 2.0
@@ -417,11 +427,19 @@ class OpponentTracking(Node):
 
         marker.scale.x = marker.scale.y = marker.scale.z = obs.size
 
-        # 반투명 빨간색
-        marker.color.r = 1.0
-        marker.color.g = 0.0
-        marker.color.b = 0.0
-        marker.color.a = 0.8
+        # 정적/동적에 따라 색상 구분
+        if obs.is_static:
+            # 정적 장애물: 회색
+            marker.color.r = 0.5
+            marker.color.g = 0.5
+            marker.color.b = 0.5
+            marker.color.a = 0.8
+        else:
+            # 동적 장애물: 빨간색
+            marker.color.r = 1.0
+            marker.color.g = 0.0
+            marker.color.b = 0.0
+            marker.color.a = 0.8
 
         self.marker_pub.publish(MarkerArray(markers=[marker]))
 

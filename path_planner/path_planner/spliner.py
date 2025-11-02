@@ -120,33 +120,41 @@ class SplineNode(Node):
         # 아래 값들은 기본값이며, 실행 중 속도(1.0~1.5배)와 추월방향(내측:1배, 외측:1.75배)에 따라 동적으로 스케일링됩니다.
         # 최종 거리 = 기본값 × 속도스케일(1.0~1.5) × 추월스케일(1.0 or 1.75)
 
-        self.pre_apex_0 = -2.0   # [m] 첫 번째 진입점 기준값 (실제: -2.0 ~ -5.25m)
+        self.pre_apex_0 = -2.0   # [m] 첫 번째 진입점 기준값 (작은 맵용: 절반으로 축소)
                                  # - 음수 = 장애물 apex 기준 앞쪽 거리
-                                 # - 더 음수로(예: -3.0) → 더 일찍 회피 시작, 완만한 곡선
+                                 # - 더 음수로(예: -2.0) → 더 일찍 회피 시작, 완만한 곡선
                                  # - 0에 가깝게(예: -1.0) → 늦게 회피 시작, 급격한 곡선
 
-        self.pre_apex_1 = -1.5  # [m] 두 번째 진입점 기준값 (실제: -1.25 ~ -3.28m)
+        self.pre_apex_1 = -1.5  # [m] 두 번째 진입점 기준값 (작은 맵용: 절반으로 축소)
                                  # - pre_apex_0과의 간격이 진입 곡선의 급격도 결정
                                  # - 간격 좁을수록 급격한 초기 회피
 
-        self.pre_apex_2 = -0.9   # [m] 세 번째 진입점 기준값 (실제: -0.8 ~ -2.1m)
+        self.pre_apex_2 = -0.9   # [m] 세 번째 진입점 기준값 (작은 맵용: 절반으로 축소)
                                  # - apex 직전 마지막 제어점
                                  # - 최종 회피 각도 결정
 
         # apex (0m): 장애물과 나란히 있을 때 최대 횡방향 변위 지점 (자동 계산)
 
-        self.post_apex_0 = 0.9   # [m] 첫 번째 복귀점 기준값 (실제: 0.8 ~ 2.1m)
+        self.post_apex_0 = 0.9   # [m] 첫 번째 복귀점 기준값 (작은 맵용: 축소)
                                  # - 양수 = 장애물 apex 기준 뒤쪽 거리
-                                 # - 0에 가깝게(예: 0.5) → 빠른 복귀, 공격적
-                                 # - 더 크게(예: 1.5) → 늦은 복귀, 안전
+                                 # - 0에 가깝게(예: 0.3) → 빠른 복귀, 공격적
+                                 # - 더 크게(예: 0.9) → 늦은 복귀, 안전
 
-        self.post_apex_1 = 1.5  # [m] 두 번째 복귀점 기준값 (실제: 1.25 ~ 3.28m)
+        self.post_apex_1 = 1.5  # [m] 두 번째 복귀점 기준값 (작은 맵용: 축소)
                                  # - post_apex_0과의 간격이 복귀 곡선의 급격도 결정
 
-        self.post_apex_2 = 2.0   # [m] 마지막 복귀점 기준값 (실제: 2.0 ~ 5.25m)
+        self.post_apex_2 = 2.0   # [m] 마지막 복귀점 기준값 (작은 맵용: 절반으로 축소)
                                  # - 회피 경로의 끝점, 센터라인 완전 복귀
                                  # - 작을수록 빠른 최적 라인 복귀 (랩타임 유리)
                                  # - 너무 작으면 복귀 중 불안정
+
+        # ==================== 스플라인 스케일링 파라미터 ====================
+
+        self.outside_overtake_scale = 1.0  # [배수] 외측 추월 시 스플라인 길이 스케일링
+                                           # - 1.0 = 내측과 동일 (급격한 회피)
+                                           # - 1.3 = 작은 맵용 (30% 더 완만)
+                                           # - 1.75 = 큰 맵용 (75% 더 완만, 기본값)
+                                           # ⚠️ 값이 클수록 회피 경로가 길어짐
 
         # ==================== 안전 거리 파라미터 ====================
 
@@ -159,6 +167,13 @@ class SplineNode(Node):
                                         # - 0.0 = 트랙 전체 폭 사용 (공격적)
                                         # - 증가(예: 0.1) → 경계에서 여유 확보 (보수적)
                                         # ⚠️ 값이 클수록 회피 가능 공간 감소
+
+        self.gb_ego_width_m = 0.9      # [m] 차량 폭의 절반 (차량 중심에서 양쪽까지의 거리)
+                                        # - 레이스라인 복귀 판단 및 경계 마진 계산에 사용
+
+        self.lateral_width_m = 0.9      # [m] 장애물 회피 시 횡방향 여유 거리
+                                        # - 장애물과 충돌 여부 판단 기준
+                                        # - 추월 apex 위치 계산에 사용
 
         # ==================== 장애물 감지 및 필터링 ====================
 
@@ -187,21 +202,28 @@ class SplineNode(Node):
         self.declare_parameter("post_apex_0", self.post_apex_0)
         self.declare_parameter("post_apex_1", self.post_apex_1)
         self.declare_parameter("post_apex_2", self.post_apex_2)
+        self.declare_parameter("outside_overtake_scale", self.outside_overtake_scale)
         self.declare_parameter("evasion_dist", self.evasion_dist)
         self.declare_parameter("obs_traj_tresh", self.obs_traj_tresh)
         self.declare_parameter("spline_bound_mindist", self.spline_bound_mindist)
+        self.declare_parameter("gb_ego_width_m", self.gb_ego_width_m)
+        self.declare_parameter("lateral_width_m", self.lateral_width_m)
         self.declare_parameter("fixed_pred_time", self.fixed_pred_time)
         self.declare_parameter("kd_obs_pred", self.kd_obs_pred)
         self.declare_parameter("lookahead", self.lookahead)
+        self.declare_parameter("vd_threshold", 0.1)
         self.pre_apex_0 = self.get_parameter("pre_apex_0").get_parameter_value().double_value
         self.pre_apex_1 = self.get_parameter("pre_apex_1").get_parameter_value().double_value
         self.pre_apex_2 = self.get_parameter("pre_apex_2").get_parameter_value().double_value
         self.post_apex_0 = self.get_parameter("post_apex_0").get_parameter_value().double_value
         self.post_apex_1 = self.get_parameter("post_apex_1").get_parameter_value().double_value
         self.post_apex_2 = self.get_parameter("post_apex_2").get_parameter_value().double_value
+        self.outside_overtake_scale = self.get_parameter("outside_overtake_scale").get_parameter_value().double_value
         self.evasion_dist = self.get_parameter("evasion_dist").get_parameter_value().double_value
         self.obs_traj_tresh = self.get_parameter("obs_traj_tresh").get_parameter_value().double_value
         self.spline_bound_mindist = self.get_parameter("spline_bound_mindist").get_parameter_value().double_value
+        self.gb_ego_width_m = self.get_parameter("gb_ego_width_m").get_parameter_value().double_value
+        self.lateral_width_m = self.get_parameter("lateral_width_m").get_parameter_value().double_value
         self.fixed_pred_time = self.get_parameter("fixed_pred_time").get_parameter_value().double_value
         self.kd_obs_pred = self.get_parameter("kd_obs_pred").get_parameter_value().double_value
         self.lookahead = self.get_parameter("lookahead").get_parameter_value().double_value
@@ -307,46 +329,6 @@ class SplineNode(Node):
 
         return obs
 
-
-    def _more_space(self, obstacle: ObstacleMsg, opp_wpnt_idx: int) -> Tuple[str, float]:
-        width_left = self.wpnts_d_left_array[opp_wpnt_idx]
-        width_right = self.wpnts_d_right_array[opp_wpnt_idx]
-        left_gap = abs(width_left - obstacle.d_left)
-        right_gap = abs(width_right + obstacle.d_right)
-        min_space = self.evasion_dist + self.spline_bound_mindist
-
-        if right_gap > min_space and left_gap < min_space:
-            # 상대 차량 기준 오른쪽으로의 에이펙스 거리를 계산합니다.
-            d_apex_right = obstacle.d_right - self.evasion_dist
-            # 오른쪽에서 추월하지만 에이펙스가 중심선의 왼쪽이면 0으로 조정합니다.
-            if d_apex_right > 0:
-                d_apex_right = 0
-            return "right", d_apex_right
-
-        elif left_gap > min_space and right_gap < min_space:
-            # 상대 차량 기준 왼쪽으로의 에이펙스 거리를 계산합니다.
-            d_apex_left = obstacle.d_left + self.evasion_dist
-            # 왼쪽에서 추월하지만 에이펙스가 중심선의 오른쪽이면 0으로 조정합니다.
-            if d_apex_left < 0:
-                d_apex_left = 0
-            return "left", d_apex_left
-        else:
-            candidate_d_apex_left = obstacle.d_left + self.evasion_dist
-            candidate_d_apex_right = obstacle.d_right - self.evasion_dist
-
-            if abs(candidate_d_apex_left) < abs(candidate_d_apex_right):
-                # 왼쪽 추월인데 에이펙스가 중심선 오른쪽이면 0으로 조정합니다.
-                if candidate_d_apex_left < 0:
-                    candidate_d_apex_left = 0
-                return "left", candidate_d_apex_left
-            else:
-                # 오른쪽 추월인데 에이펙스가 중심선 왼쪽이면 0으로 조정합니다.
-                if candidate_d_apex_right > 0:
-                    candidate_d_apex_right = 0
-                return "right", candidate_d_apex_right
-
-
-
     def do_spline(self, obstacles: ObstacleArray) -> Tuple[WpntArray, MarkerArray]:
         """
         가장 가까운 장애물을 기준으로 프리·포스트 에이펙스 점을 연결하는 스플라인 회피 경로를 생성합니다.
@@ -391,7 +373,7 @@ class SplineNode(Node):
             obstacle_idx = utils.find_closest_index(self.wpnts_s_array, s_apex)
             gb_idxs = [(obstacle_idx + i) % self.gb_max_idx for i in range(20)]
             kappas = np.array([self.kappa_array[gb_idx] for gb_idx in gb_idxs])
-            outside = "left" if np.sum(kappas) < 0 else "right"
+            outside = "right" if np.sum(kappas) < 0 else "left"
             # 적절한 측면을 선택하고 장애물 기준 에이펙스 거리를 계산합니다.
             more_space, d_apex = self._more_space(closest_obs, obstacle_idx)
 
@@ -417,7 +399,7 @@ class SplineNode(Node):
                 dst = dst * np.clip(1.0 + self.car_vs / self.gb_vmax, 1, 1.5)
                 # 외측 추월 시 스플라인을 완만하게 만듭니다.
                 if outside == more_space:
-                    si = s_apex + dst * 1.75  # TODO make parameter
+                    si = s_apex + dst * self.outside_overtake_scale
                 else:
                     si = s_apex + dst
                 di = d_apex if dst == 0 else 0
@@ -425,12 +407,34 @@ class SplineNode(Node):
             # NumPy 배열로 변환합니다.
             evasion_points = np.array(evasion_points)
 
+            # 랩어라운드(lap-around) 처리: s 좌표가 단조 증가하도록 보정
+            # Spline 생성을 위해 x좌표(s)는 반드시 증가하는 배열이어야 함
+            s_coords = evasion_points[:, 0]
+            for i in range(1, len(s_coords)):
+                if s_coords[i] < s_coords[i-1]:
+                    s_coords[i:] += self.track_length
+
+            # 랩어라운드(lap-around) 처리: s 좌표가 단조 증가하도록 보정
+            # Spline 생성을 위해 x좌표(s)는 반드시 증가하는 배열이어야 함
+            s_coords = evasion_points[:, 0]
+            for i in range(1, len(s_coords)):
+                if s_coords[i] < s_coords[i-1]:
+                    s_coords[i:] += self.track_length
+
+            # OVERTAKE 속도 프로파일을 위한 apex s 좌표 저장
+            s_apex_for_velocity = s_apex
+
+            # 랩어라운드(lap-around) 처리: s 좌표가 단조 증가하도록 보정
+            # Spline 생성을 위해 x좌표(s)는 반드시 증가하는 배열이어야 함
+            s_coords = np.copy(evasion_points[:, 0])
+            for i in range(1, len(s_coords)):
+                if s_coords[i] < s_coords[i-1]:
+                    s_coords[i:] += self.track_length
+
             # s를 기반으로 d에 대한 공간 스플라인을 계산합니다.
             spline_resolution = 0.25
-            spatial_spline = Spline(
-                x=evasion_points[:, 0], y=evasion_points[:, 1])
-            evasion_s = np.arange(
-                evasion_points[0, 0], evasion_points[-1, 0], spline_resolution)
+            spatial_spline = Spline(x=s_coords, y=evasion_points[:, 1], k=3)   # 3차 스플라인
+            evasion_s = np.arange(s_coords[0], s_coords[-1], spline_resolution)
             # d 값을 에이펙스 거리로 제한합니다.
             if d_apex < 0:
                 evasion_d = np.clip(spatial_spline(evasion_s), d_apex, 0)
@@ -460,10 +464,40 @@ class SplineNode(Node):
                         )
                         danger_flag = True
                         break
-                # 전역 웨이포인트에서 속도를 가져오고 추월 방향에 따라 스케일링합니다.
-                # 외측 추월: 1.25배 증속 (안전한 공간), 내측 추월: 0.8배 감속 (위험한 공간)
-                # TODO: 속도 스케일링을 ROS 파라미터로 노출합니다.
-                vi = self.waypoints_v[gb_wpnt_i] * 1.1 if outside == more_space else self.waypoints_v[gb_wpnt_i] * 0.8
+                # OVERTAKE 상태용 속도 프로파일: apex 기준 진입/복귀 구분 + 곡률 제한
+                # - 진입 구간 (pre_apex, apex 이전): 1.25배 가속
+                # - 복귀 구간 (post_apex, apex 이후): 0.9배 감속
+                # - 곡률이 큰 구간에서는 속도 제한
+                base_velocity = self.waypoints_v[gb_wpnt_i]
+
+                # 1. 곡률 기반 속도 제한 계산
+                kappa = abs(self.kappa_array[gb_wpnt_i])
+                # 곡률이 클수록 속도를 낮춤 (급커브에서 안전하게)
+                # speed_factor = 1.0 / (1.0 + k * |kappa|), k=5.0 (조정 계수)
+                curvature_factor = 1.0 / (1.0 + 5.0 * kappa)
+                # 최소 0.6배, 최대 1.0배로 제한 (OVERTAKE에서는 감속만)
+                curvature_factor = max(0.6, min(1.0, curvature_factor))
+
+                # 2. apex 이전/이후 판단 (랩어라운드 고려)
+                s_diff = evasion_s[i] - s_apex_for_velocity
+
+                # 랩어라운드 고려하여 -track_length/2 ~ track_length/2 범위로 정규화
+                if s_diff > self.track_length / 2:
+                    s_diff -= self.track_length
+                elif s_diff < -self.track_length / 2:
+                    s_diff += self.track_length
+
+                # 3. apex 기반 가속/감속 배율 결정
+                if s_diff < 0:
+                    # apex 이전 (진입 구간: pre_apex_0 ~ apex)
+                    apex_factor = 1.25
+                else:
+                    # apex 이후 (복귀 구간: apex ~ post_apex_2)
+                    apex_factor = 0.9
+
+                # 4. 최종 속도 = 기본속도 × apex배율 × 곡률제한
+                # 곡률 제한을 먼저 적용하여 급커브에서 과속 방지
+                vi = base_velocity * apex_factor * curvature_factor
                 wpnts.wpnts.append(
                     self.xyv_to_wpnts(
                         x=resp[0, i], y=resp[1, i], s=evasion_s[i], d=evasion_d[i], v=vi, wpnts=wpnts)
@@ -487,7 +521,7 @@ class SplineNode(Node):
             else:
                 wpnts.wpnts = []
                 mrks.markers = []
-                # 상태 머신의 급격한 전환을 완화하기 위한 조치입니다.
+                # 상태 머신의 급격한 전환을 완화하기 위한 조치입니다。
                 wpnts.side_switch = True
                 self.last_switch_time = self.get_clock().now().to_msg()
                 self.last_ot_side = more_space
@@ -567,7 +601,71 @@ class SplineNode(Node):
         wpnt.d_m = float(d)
         wpnt.vx_mps = float(v)
         return wpnt
-    
+
+    def _calculate_overtake_area(self, obstacle: ObstacleMsg, car_s: float, horizon: float) -> Tuple[float, float]:
+        """
+        장애물 전방의 경로를 따라 좌/우 가용 공간의 총합(면적)을 계산합니다.
+        """
+        area_left = 0.0
+        area_right = 0.0
+
+        # 장애물 s_center를 기준으로 전방 horizon까지의 웨이포인트를 탐색합니다.
+        start_s_for_area = obstacle.s_center
+        end_s_for_area = normalize_s(start_s_for_area + horizon, self.track_length)
+
+        # 웨이포인트 인덱스 범위 계산
+        start_idx = utils.find_closest_index(self.wpnts_s_array, start_s_for_area)
+        end_idx = utils.find_closest_index(self.wpnts_s_array, end_s_for_area)
+
+        # 랩어라운드 처리
+        if start_idx <= end_idx:
+            indices = np.arange(start_idx, end_idx + 1)
+        else:
+            indices = np.concatenate((np.arange(start_idx, self.gb_max_idx), np.arange(0, end_idx + 1)))
+
+        # 각 웨이포인트에서 가용 공간 계산 및 합산
+        for idx in indices:
+            wpnt_d_left = self.wpnts_d_left_array[idx]
+            wpnt_d_right = self.wpnts_d_right_array[idx]
+
+            # 왼쪽 가용 공간: 트랙 왼쪽 경계 - 장애물 왼쪽 경계
+            available_left = wpnt_d_left - obstacle.d_left
+            if available_left > 0:
+                area_left += available_left
+
+            # 오른쪽 가용 공간: 장애물 오른쪽 경계 - 트랙 오른쪽 경계
+            # d_right는 음수 값임에 유의
+            available_right = obstacle.d_right - (-wpnt_d_right)
+            if available_right > 0:
+                area_right += available_right
+
+        return area_left, area_right
+
+    def _more_space(self, obstacle: ObstacleMsg, opp_wpnt_idx: int) -> Tuple[str, float]:
+        """
+        장애물 주변의 가용 공간(면적)과 차량의 횡방향 움직임을 고려하여 최적의 회피/추월 방향을 결정합니다.
+        """
+        # 1. 면적 기반 공간 계산
+        horizon = 5.0  # TODO: 파라미터화
+        area_left, area_right = self._calculate_overtake_area(obstacle, self.car_s, horizon)
+
+        # 2. 차량의 횡방향 속도(car_vd)를 고려하여 선호하는 방향을 결정합니다.
+        vd_threshold = 0.1  # 횡방향 속도 임계값 (m/s)
+
+        d_apex_left = obstacle.d_center + self.lateral_width_m
+        d_apex_right = obstacle.d_center - self.lateral_width_m
+
+        d_apex_left = min(d_apex_left, self.wpnts_d_left_array[opp_wpnt_idx] - self.gb_ego_width_m)
+        d_apex_right = max(d_apex_right, -self.wpnts_d_right_array[opp_wpnt_idx] + self.gb_ego_width_m)
+
+        if area_left > area_right and self.car_vd >= -vd_threshold:
+            return "left", d_apex_left
+        elif area_right > area_left and self.car_vd <= vd_threshold:
+            return "right", d_apex_right
+        elif area_left > area_right:
+            return "left", d_apex_left
+        else:
+            return "right", d_apex_right
 
 def main(args=None):
     rclpy.init(args=args)
@@ -579,17 +677,3 @@ def main(args=None):
 
 if __name__ == "__main__":
     main()
-    
-
-
-
-
-
-            
-        
-
-        
-
-
-
-        
