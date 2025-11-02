@@ -1,0 +1,43 @@
+# Hybrid A* Local Planner configuration
+
+local_planner:
+  ros__parameters:
+    node_executable: 'local_hybrid_astar_node'
+    node_name: 'local_hybrid_astar_node'
+
+    # Topics
+    global_path_topic: '/global_path'
+    scan_topic: '/scan'
+    odom_topic: '/odom'
+    output_topic: '/local_path'
+    costmap_topic: '/local_costmap'
+    publish_costmap: true
+
+    # Frames
+    map_frame: 'map'
+    base_frame: 'base_link'
+
+    # Costmap configuration
+    grid_resolution: 0.25        # meters per cell
+    grid_width: 20.0             # meters
+    grid_height: 20.0            # meters
+    inflation_radius: 0.5        # meters
+    vehicle_radius: 0.35         # meters
+
+    # Planner configuration
+    heading_bins: 72
+    num_steering_samples: 5
+    max_steering_angle: 0.6      # radians
+    wheelbase: 0.33              # meters
+    step_size: 0.6               # meters
+    lookahead_distance: 8.0      # meters
+    goal_tolerance: 0.6          # meters
+    goal_yaw_tolerance_deg: 30.0 # degrees
+    planner_hz: 5.0
+    max_iterations: 4000
+
+    # Cost weights
+    steering_change_weight: 2.0
+    obstacle_cost_weight: 15.0
+    path_distance_weight: 1.5
+    heuristic_weight: 1.2
