@@ -42,7 +42,7 @@ setup(
         'console_scripts': [
             # gym_bridge 명령어 정의
             'gym_bridge = simulator.gym_bridge:main',
-            'odom_path_publisher = simulator.odom_path_publisher:main'
+            'path_publisher = simulator.path_publisher:main'
         ],
     },
 )

@@ -89,6 +89,16 @@ def generate_launch_description():
             parameters=[config, {'map_path': map_path_base}]
         )
 
+        path_publisher_node = Node(
+            package='simulator',
+            executable='path_publisher',
+            name='path_publisher',
+            parameters=[{'odom_topic': config_dict['bridge']['ros__parameters']['ego_odom_topic'],
+                         'path_topic': 'path',
+                         'path_frame_id': 'map',
+                         'max_points': 0}]
+        )
+
         map_server_launch = IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(get_package_share_directory('f1tenth'), 'launch', 'map_server_launch.py')
@@ -112,7 +122,7 @@ def generate_launch_description():
             }]
         )
 
-        return [bridge_node, map_server_launch, lifecycle_manager_node]
+        return [bridge_node, map_server_launch, lifecycle_manager_node, path_publisher_node]
     
     # RViz 시각화 노드
     rviz_node = Node(

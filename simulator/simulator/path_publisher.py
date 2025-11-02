@@ -13,23 +13,24 @@ from nav_msgs.msg import Odometry, Path
 from geometry_msgs.msg import PoseStamped
 
 
-class OdomPathPublisher(Node):
+class PathPublisher(Node):
     """Subscribe to Odometry and publish accumulated Path points."""
 
     def __init__(self) -> None:
-        super().__init__('odom_path_publisher')
+        super().__init__('path_publisher')
 
         # Parameters allow remapping topics and limiting the history length
         self.declare_parameter('odom_topic', '/odom')
         self.declare_parameter('path_topic', '/path')
         self.declare_parameter('path_frame_id', '')
-        self.declare_parameter('max_points', 1000)
+        self.declare_parameter('max_points', 0)
         self.declare_parameter('publish_rate', 0.0)
 
         self._odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
         self._path_topic = self.get_parameter('path_topic').get_parameter_value().string_value
         self._path_frame_id = self.get_parameter('path_frame_id').get_parameter_value().string_value
-        self._max_points = max(1, int(self.get_parameter('max_points').value))
+        max_points_param = int(self.get_parameter('max_points').value)
+        self._max_points: Optional[int] = max_points_param if max_points_param > 0 else None
         publish_rate = float(self.get_parameter('publish_rate').value)
         self._publish_period = Duration(seconds=0.0) if publish_rate <= 0.0 else Duration(seconds=1.0 / publish_rate)
 
@@ -45,7 +46,7 @@ class OdomPathPublisher(Node):
 
         self.get_logger().info(
             f'Publishing odom trajectory from {self._odom_topic} to {self._path_topic} '
-            f'(frame="{self._path_frame_id or "odom header"}", max_points={self._max_points})'
+            f'(frame="{self._path_frame_id or "odom header"}", max_points={self._max_points or "unbounded"})'
         )
 
     def _on_odom(self, msg: Odometry) -> None:
@@ -57,7 +58,7 @@ class OdomPathPublisher(Node):
         pose.header.frame_id = frame_id
 
         self._poses.append(pose)
-        if len(self._poses) > self._max_points:
+        if self._max_points and len(self._poses) > self._max_points:
             self._poses.pop(0)
 
         self._path_msg.header.frame_id = frame_id
@@ -76,7 +77,7 @@ class OdomPathPublisher(Node):
 
 def main(args=None) -> None:
     rclpy.init(args=args)
-    node = OdomPathPublisher()
+    node = PathPublisher()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

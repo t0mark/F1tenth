@@ -15,6 +15,7 @@ from tf2_ros.buffer import Buffer
 from ament_index_python.packages import get_package_share_directory, PackageNotFoundError
 
 from pathlib import Path
+from functools import partial
 import gymnasium as gym
 import numpy as np
 from transforms3d import euler
@@ -264,19 +265,22 @@ class GymBridge(Node):
 
         # 서브스크라이버
         self.ego_drive_sub = self.create_subscription(
-            AckermannDriveStamped, ego_drive_topic, self.drive_callback, 10)
+            AckermannDriveStamped, ego_drive_topic,
+            partial(self._drive_command_callback, 'ego'), 10)
         self.ego_reset_sub = self.create_subscription(
             PoseWithCovarianceStamped, '/initialpose', self.ego_reset_callback, 10)
         
         if self.has_opp:
             opp_drive_topic = self.get_parameter('opp_drive_topic').value
             self.opp_drive_sub = self.create_subscription(
-                AckermannDriveStamped, opp_drive_topic, self.opp_drive_callback, 10)
+                AckermannDriveStamped, opp_drive_topic,
+                partial(self._drive_command_callback, 'opp'), 10)
             self.opp_reset_sub = self.create_subscription(
                 PoseStamped, '/goal_pose', self.opp_reset_callback, 10)
             opp_teleop_topic = self.get_parameter('opp_teleop_topic').value
             self.opp_teleop_sub = self.create_subscription(
-                AckermannDriveStamped, opp_teleop_topic, self.opp_teleop_callback, 10)
+                AckermannDriveStamped, opp_teleop_topic,
+                partial(self._drive_command_callback, 'opp'), 10)
         
         self.clicked_point_sub = self.create_subscription(
             PointStamped, '/clicked_point', self.clicked_point_callback, 10)
@@ -285,32 +289,23 @@ class GymBridge(Node):
         self.drive_timer = self.create_timer(0.01, self.drive_timer_callback)
         self.timer = self.create_timer(0.004, self.timer_callback)
     
-    def drive_callback(self, drive_msg):
+    def _drive_command_callback(self, vehicle, drive_msg):
         """
-        ego 차량 제어 명령 콜백
-        - 목적: ego 차량의 목표 속도/조향각을 갱신
-        - 입력: AckermannDriveStamped (speed [m/s], steering_angle [rad])
+        공통 제어 명령 콜백
+        - 목적: ego/opp 차량의 목표 속도와 조향각을 갱신
+        - 입력: vehicle ('ego' 또는 'opp'), AckermannDriveStamped
         """
-        self.ego_requested_speed = drive_msg.drive.speed
-        self.ego_steer = drive_msg.drive.steering_angle
-        self.ego_drive_published = True
+        requested_speed = drive_msg.drive.speed
+        steering_angle = drive_msg.drive.steering_angle
 
-    def opp_drive_callback(self, drive_msg):
-        """
-        opp 차량 제어 명령 콜백 (다중 에이전트일 때만)
-        - 목적: opp 차량의 목표 속도/조향각을 갱신
-        - 입력: AckermannDriveStamped (speed [m/s], steering_angle [rad])
-        """
-        self.opp_requested_speed = drive_msg.drive.speed
-        self.opp_steer = drive_msg.drive.steering_angle
-        self.opp_drive_published = True
-
-    def opp_teleop_callback(self, drive_msg):
-        """
-        조이스틱 텔레옵 콜백
-        - 목적: 텔레옵 토픽을 통해 상대 차량 제어
-        """
-        self.opp_drive_callback(drive_msg)
+        if vehicle == 'ego':
+            self.ego_requested_speed = requested_speed
+            self.ego_steer = steering_angle
+            self.ego_drive_published = True
+        elif vehicle == 'opp':
+            self.opp_requested_speed = requested_speed
+            self.opp_steer = steering_angle
+            self.opp_drive_published = True
 
     def _reset_environment(self, poses):
         """
