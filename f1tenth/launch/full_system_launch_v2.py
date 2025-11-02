@@ -152,7 +152,7 @@ def generate_launch_description():
                 output='screen',
                 parameters=[
                     {'waypoint_file': waypoint_file_path},
-                    {'use_sim_time': LaunchConfiguration('use_sim_time')}
+                    {'use_sim_time': LaunchConfiguration('use_sim_time')},
                 ]
             ),
         ]

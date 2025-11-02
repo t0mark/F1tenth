@@ -177,7 +177,7 @@ class PP_Controller:
         idx_la_position = self.nearest_waypoint(la_position, self.waypoint_array_in_map[:, :2])
         
         # 웨이포인트에서 직접 목표 속도를 가져옵니다.
-        global_speed = self.waypoint_array_in_map[idx_la_position, 2]
+        global_speed = self.waypoint_array_in_map[idx_la_position, 7]
 
         if(self.state == StateType.TRAILING and (self.opponent is not None)):  # 추종 제어기
             speed_command = self.trailing_controller(global_speed)

@@ -81,18 +81,42 @@ class ControllerNode(Node):
         self.rate_hz = self.get_parameter('rate_hz').value
         self.timer = self.create_timer(1.0 / self.rate_hz, self.control_loop)
 
-        # 순수 추종(Pure Pursuit) 컨트롤러 설정
-        self.declare_parameter('t_clip_min', 1.0)
-        self.declare_parameter('t_clip_max', 7.0)
-        self.declare_parameter('q_l1', -0.65)
+        # --- 순수 추종(Pure Pursuit) 컨트롤러 상세 파라미터 --- #
+
+        # L1 Distance (조향 Lookahead) 계산 파라미터: L1 = (m_l1 * 현재속도) + q_l1
+        # m_l1: 속도 비례 계수 [초]. 속도가 높을수록 Lookahead 거리를 더 멀리 설정합니다.
         self.declare_parameter('m_l1', 0.65)
+        # q_l1: 고정 상수항 [미터]. 속도와 관계없이 Lookahead 거리에 추가되는 최소 거리입니다.
+        self.declare_parameter('q_l1', -0.65)
+        # t_clip_min: L1 Distance의 최소 한계값 [미터]. 저속에서 Lookahead 거리가 너무 짧아지는 것을 방지합니다.
+        self.declare_parameter('t_clip_min', 1.0)
+        # t_clip_max: L1 Distance의 최대 한계값 [미터]. 고속에서 Lookahead 거리가 너무 길어지는 것을 방지합니다.
+        self.declare_parameter('t_clip_max', 7.0)
+
+        # 속도 결정을 위한 Lookahead 파라미터
+        # speed_lookahead: 목표 속도를 가져올 미래 예측 시간 [초]. 이 시간만큼 뒤의 웨이포인트 속도를 현재 목표 속도로 설정합니다.
         self.declare_parameter('speed_lookahead', 0.1)
-        self.declare_parameter('lat_err_coeff', 0.25)
-        self.declare_parameter('start_scale_speed', 0.5)
+
+        # 조향 계산 보조를 위한 Lookahead 파라미터
+        # speed_lookahead_for_steer: 조향각 계산 시 참조할 미래 예측 시간 [초]. 이 시간만큼 뒤의 웨이포인트 속도를 참조하여 조향을 보정합니다.
         self.declare_parameter('speed_lookahead_for_steer', 0.1)
+
+        # 횡방향 오차(Lateral Error) 기반 속도 감속 파라미터
+        # lat_err_coeff: 횡방향 오차에 대한 민감도 [무차원, 0~1]. 값이 클수록 경로에서 벗어났을 때 속도를 더 공격적으로 줄입니다.
+        self.declare_parameter('lat_err_coeff', 0.25)
+
+        # 기타 파라미터
+        # start_scale_speed: 출발 시 초기 속도 스케일링 값 [무차원].
+        self.declare_parameter('start_scale_speed', 0.5)
+
+        # 상대 차량 추종(Trailing) 제어 파라미터
+        # trailing_gap: 추종 시 유지할 목표 거리 [미터].
         self.declare_parameter('trailing_gap', 1.0)
+        # trailing_p_gain: 추종 거리 오차에 대한 비례(P) 이득 [무차원].
         self.declare_parameter('trailing_p_gain', 0.5)
+        # trailing_d_gain: 추종 속도 차이에 대한 미분(D) 이득 [무차원].
         self.declare_parameter('trailing_d_gain', 0.5)
+        
         self.pure_pursuit_control = PP_Controller(
             self.get_parameter('t_clip_min').value,
             self.get_parameter('t_clip_max').value,
