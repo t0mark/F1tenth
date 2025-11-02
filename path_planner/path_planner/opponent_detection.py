@@ -167,17 +167,14 @@ class OpponentDetection(Node):
         self.declare_parameter('max_viewing_distance', 9.0, descriptor=ParameterDescriptor(
             description="maximum viewing distance of the lidar in m"),
         )
-        self.declare_parameter('wall_safety_margin', 0.15, descriptor=ParameterDescriptor(
-            description="Slight offset from track boundaries to filter out wall detections in m"),
-        )
+        
         self.min_obs_size = self.get_parameter(
             'min_obs_size').get_parameter_value().integer_value
         self.max_obs_size = self.get_parameter(
             'max_obs_size').get_parameter_value().double_value
         self.max_viewing_distance = self.get_parameter(
             'max_viewing_distance').get_parameter_value().double_value
-        self.wall_safety_margin = self.get_parameter(
-            'wall_safety_margin').get_parameter_value().double_value
+        
 
         # --- 변수 ---
         # 자차의 s 좌표
@@ -289,33 +286,6 @@ class OpponentDetection(Node):
         xyz_map = H_l2m @ xyz_laser_frame
 
         cloudPoints_list = np.transpose(xyz_map[:2, :]).tolist()
-
-        # --------------------------------------------------
-        # 맵 기반 사전 필터링: 트랙 내부 포인트만 선택
-        # --------------------------------------------------
-        cloudPoints_array = np.array(cloudPoints_list)
-        x_all = cloudPoints_array[:, 0]
-        y_all = cloudPoints_array[:, 1]
-        s_all, d_all = self.frenet_converter.get_frenet(x_all, y_all)
-
-        # 트랙 내부에 있는 포인트의 인덱스를 수집
-        valid_indices = []
-        for i, (s, d) in enumerate(zip(s_all, d_all)):
-            if self.laserPointOnTrack(s, d, car_s):
-                valid_indices.append(i)
-
-        # 유효한 포인트가 충분하지 않으면 빈 리스트 반환
-        if len(valid_indices) < self.min_obs_size:
-            if self.plot_debug:
-                self.breakpoints_markers_pub.publish(self.clearmarkers())
-            return []
-
-        # 필터링된 포인트만 사용 (인덱스 기반)
-        valid_indices = np.array(valid_indices)
-        cloudPoints_list = [cloudPoints_list[i] for i in valid_indices]
-        xyz_laser_frame = xyz_laser_frame[:, valid_indices]
-        ranges = ranges[valid_indices]
-        # --------------------------------------------------
 
         # --------------------------------------------------
         # 적응형 방법으로 포인트 클라우드를 잠재적 객체 단위로

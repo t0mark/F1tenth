@@ -93,7 +93,7 @@ class StateMachine(Node):
         self.spline_hyst_timer_sec = self.get_parameter("spline_hyst_timer_sec").get_parameter_value().double_value
         self.declare_parameter("n_loc_wpnts", 50)
         self.n_loc_wpnts = self.get_parameter("n_loc_wpnts").get_parameter_value().integer_value
-        self.declare_parameter("static_velocity_threshold_mps", 0.2)
+        self.declare_parameter("static_velocity_threshold_mps", 0.5)
         self.static_velocity_threshold = self.get_parameter("static_velocity_threshold_mps").get_parameter_value().double_value
         self.declare_parameter("prediction_horizon_sec", 0.5)
         self.prediction_horizon = self.get_parameter("prediction_horizon_sec").get_parameter_value().double_value
