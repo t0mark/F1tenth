@@ -69,6 +69,7 @@ def generate_launch_description():
             package='path_planner',
             executable='checkpoint_recorder_node',
             name='checkpoint_recorder_node',
+            emulate_tty=True,
             output='screen',
             parameters=[{
                 'map_frame': LaunchConfiguration('map_frame'),

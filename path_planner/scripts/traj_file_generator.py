@@ -111,7 +111,7 @@ def visualize_path_to_png(waypoints, output_png_path):
 def main():
     # 입력 웨이포인트 파일 경로 (예: data/checkpoints.csv)
     # 스크립트가 실행되는 위치를 기준으로 상대 경로를 사용합니다.
-    input_waypoint_file = os.path.join('src/path_planner/data', 'checkpoints.csv')
+    input_waypoint_file = os.path.join('src/path_planner/path_planner/data', 'checkpoints.csv')
     
     # 파일 존재 여부 확인
     if not os.path.exists(input_waypoint_file):
@@ -132,7 +132,7 @@ def main():
     fitted_waypoints = FitPath(waypoints)
 
     # 결과 CSV 파일 저장 경로 (예: src/path_planner/data/fitted_waypoints.csv)
-    output_csv_path = os.path.join('src/path_planner/data', 'fitted_waypoints.csv')
+    output_csv_path = os.path.join('src/path_planner/path_planner/data', 'fitted_waypoints.csv')
 
     # CSV 파일 헤더 정의
     header = 'x_ref_m,y_ref_m,psi_racetraj_rad,s_racetraj_m,kappa_racetraj_radpm,vx_racetraj_mps'
@@ -142,7 +142,7 @@ def main():
     print(f"가공된 웨이포인트가 다음 경로에 저장되었습니다: {output_csv_path}")
 
     # 경로 시각화를 PNG 파일로 저장
-    output_png_path = os.path.join('src/path_planner/data', 'fitted_waypoints_speed_heatmap.png')
+    output_png_path = os.path.join('src/path_planner/path_planner/data', 'fitted_waypoints_speed_heatmap.png')
     visualize_path_to_png(fitted_waypoints, output_png_path)
 
 if __name__ == '__main__':

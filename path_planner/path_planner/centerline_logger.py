@@ -21,7 +21,7 @@ class WaypointsLogger(Node):
         super().__init__('waypoints_logger')
 
         # 출력 파일 경로 설정
-        self.data_dir = 'src/path_planner/data'
+        self.data_dir = 'src/path_planner/path_planner/data'
         os.makedirs(self.data_dir, exist_ok=True)
         self.log_filename = os.path.join(self.data_dir, 'width_log.csv')
         self.png_filename = os.path.join(self.data_dir, 'width_log_visualization.png')

@@ -4,6 +4,7 @@
 ```
 ros2 launch path_planner checkpoint_recorder_launch.py
 ```
+위 내용에 정규화 -> 가우시안 필터링 자동실행 추가 q누르면 저장
 
 
 2. fernet 좌표계 형식으로 변환 및 가우시안 필터링으로 속도값 추가

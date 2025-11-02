@@ -91,8 +91,8 @@ def visualize_final_path(waypoints, output_png_path):
 
 if __name__ == "__main__":
     # 입력 파일 경로 설정
-    widths_path = os.path.join('src/path_planner/data', 'width_log.csv')
-    fitted_path = os.path.join('src/path_planner/data', 'fitted_waypoints.csv')
+    widths_path = os.path.join('src/path_planner/path_planner/data', 'width_log.csv')
+    fitted_path = os.path.join('src/path_planner/path_planner/data', 'fitted_waypoints.csv')
 
     # 데이터 로드
     waypoints_widths = load_csv_widths(widths_path)
@@ -102,11 +102,11 @@ if __name__ == "__main__":
     final_data = create_new_csv(waypoints_widths, waypoints_fitted)
 
     # 최종 CSV 파일 저장
-    save_path = os.path.join('src/path_planner/data', 'final_waypoints.csv')
+    save_path = os.path.join('src/path_planner/path_planner/data', 'final_waypoints.csv')
     header = 'x_ref_m;y_ref_m;width_left_m;width_right_m;psi_racetraj_rad;s_racetraj_m;kappa_racetraj_radpm;vx_racetraj_mps'
     np.savetxt(save_path, final_data, delimiter='; ', header=header, comments='', fmt='%.4f')
     print(f"병합된 최종 웨이포인트가 다음 경로에 저장되었습니다: {save_path}")
 
     # 최종 경로 시각화 및 저장
-    viz_save_path = os.path.join('src/path_planner/data', 'final_waypoints_visualization.png')
+    viz_save_path = os.path.join('src/path_planner/path_planner/data', 'final_waypoints_visualization.png')
     visualize_final_path(final_data, viz_save_path)
