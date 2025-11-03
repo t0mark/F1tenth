@@ -47,12 +47,12 @@ sudo apt install ros-humble-cartographer ros-humble-cartographer-ros
 ### 4. ROS2 패키지 빌드
 ```bash
 mkdir -p ~/f1_ws
+cd ~/f1_ws
 
 git clone https://github.com/t0mark/f1tenth.git src
 # 하드웨어 사용 시
-git clone https://github.com/t0mark/f1tenth.git -b hw
+git clone https://github.com/t0mark/f1tenth.git -b hardware src/hardware
 
-cd ~/f1_ws
 source /opt/ros/humble/setup.bash
 rosdep update
 rosdep install -i --from-path src --rosdistro humble -y
