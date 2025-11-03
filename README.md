@@ -50,16 +50,22 @@ mkdir -p ~/f1_ws
 cd ~/f1_ws
 
 git clone https://github.com/t0mark/f1tenth.git src
-# 하드웨어 사용 시
-mkdir -p ~/hw_ws
-cd ~/hw_ws
-git clone https://github.com/t0mark/f1tenth.git -b hardware src
 
 source /opt/ros/humble/setup.bash
 rosdep update
 rosdep install -i --from-path src --rosdistro humble -y
-colcon build
-source install/setup.bash
+colcon build --symlink-install
+echo source ~/f1_ws/install/setup.bash >> ~/.bashrc
+
+# 하드웨어 사용 시
+mkdir -p ~/hw_ws
+cd ~/hw_ws
+git clone https://github.com/t0mark/f1tenth.git -b hardware src
+source /opt/ros/humble/setup.bash
+rosdep update
+rosdep install -i --from-path src --rosdistro humble -y
+colcon build --symlink-install
+echo source ~/hw_ws/install/setup.bash >> ~/.bashrc
 ```
 
 > **참고:** `colcon build` 실행 시 `vesc_ackermann`, `vesc_driver` 관련 경고가 나타날 수 있습니다. 이는 패키지 개발자를 위한 권장 사항으로, 사용자에게는 영향을 주지 않으므로 무시해도 괜찮습니다.
@@ -103,7 +109,7 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 | 토픽 | 타입 | 설명 |
 |------|------|------|
 | `/scan` | LaserScan | LiDAR 데이터 |
-| `/ego_racecar/odom` | Odometry | 차량 위치 |
+| `/odom` | Odometry | 차량 위치 |
 | `/global_path` | Path | 전역 경로 |
 | `/local_path` | Path | 지역 경로 |
 | `/drive` | AckermannDriveStamped | 차량 제어 명령 |
