@@ -51,7 +51,9 @@ cd ~/f1_ws
 
 git clone https://github.com/t0mark/f1tenth.git src
 # 하드웨어 사용 시
-git clone https://github.com/t0mark/f1tenth.git -b hardware src/hardware
+mkdir -p ~/hw_ws
+cd ~/hw_ws
+git clone https://github.com/t0mark/f1tenth.git -b hardware src
 
 source /opt/ros/humble/setup.bash
 rosdep update
