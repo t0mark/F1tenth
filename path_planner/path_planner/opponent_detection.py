@@ -497,7 +497,7 @@ class OpponentDetection(Node):
             # 위 벡터에 수직인 벡터
             orthVec = np.array([-colVec[1], colVec[0]])
             # 중심 위치
-            center = corner1 + 0.5*colVec + 0.5*orthVec
+            center = corner1 + 1.0*colVec + 1.0*orthVec
 
             current_obstacle_array.append(
                 Obstacle(center[0], center[1], np.linalg.norm(colVec), theta_opt))

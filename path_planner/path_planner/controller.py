@@ -85,13 +85,13 @@ class ControllerNode(Node):
 
         # L1 Distance (조향 Lookahead) 계산 파라미터: L1 = (m_l1 * 현재속도) + q_l1
         # m_l1: 속도 비례 계수 [초]. 속도가 높을수록 Lookahead 거리를 더 멀리 설정합니다. default: 0.5
-        self.declare_parameter('m_l1', 0.7)
+        self.declare_parameter('m_l1', 0.4)
         # q_l1: 고정 상수항 [미터]. 속도와 관계없이 Lookahead 거리에 추가되는 최소 거리입니다. default: -0.65
-        self.declare_parameter('q_l1', -0.4)
+        self.declare_parameter('q_l1', -0.65)
         # t_clip_min: L1 Distance의 최소 한계값 [미터]. 저속에서 Lookahead 거리가 너무 짧아지는 것을 방지합니다.
         self.declare_parameter('t_clip_min', 1.0)
         # t_clip_max: L1 Distance의 최대 한계값 [미터]. 고속에서 Lookahead 거리가 너무 길어지는 것을 방지합니다.
-        self.declare_parameter('t_clip_max', 7.0)   # default: 6.0
+        self.declare_parameter('t_clip_max', 6.0)   # default: 6.0
 
         # 속도 결정을 위한 Lookahead 파라미터
         # speed_lookahead: 목표 속도를 가져올 미래 예측 시간 [초]. 이 시간만큼 뒤의 웨이포인트 속도를 현재 목표 속도로 설정합니다.
