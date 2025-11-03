@@ -163,7 +163,7 @@ class OpponentDetection(Node):
             description="minimum number of points in an obstacle")
         )
         # 장애물의 최대 크기 (단위: 미터)
-        self.declare_parameter('max_obs_size', 0.6, descriptor=ParameterDescriptor(
+        self.declare_parameter('max_obs_size', 1.0, descriptor=ParameterDescriptor(
             description="maximum size of an obstacle in m"),
         )
         # 라이다의 최대 시야 거리 (단위: 미터)
@@ -171,7 +171,7 @@ class OpponentDetection(Node):
             description="maximum viewing distance of the lidar in m"),
         )
         # 트랙 경계 안쪽으로 벽으로 간주할 마진 (단위: 미터)
-        self.declare_parameter('track_boundary_margin', 0.25, descriptor=ParameterDescriptor(
+        self.declare_parameter('track_boundary_margin', 0.05, descriptor=ParameterDescriptor(
             description="margin inside track boundary to consider as wall in m"),
         )
         # 중심선으로부터 장애물을 사전 필터링할 거리 (단위: 미터)

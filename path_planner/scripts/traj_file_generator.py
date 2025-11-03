@@ -18,7 +18,7 @@ def prune_points(points, distance_threshold=0.15):
             pruned_points.append(points[i])
     return np.array(pruned_points)
 
-def calculate_smooth_speed_profile(kappas, max_speed=4.0, min_speed=0.5, sigma=1):
+def calculate_smooth_speed_profile(kappas, max_speed=6.0, min_speed=1.0, sigma=2):
     """
     곡률 기반으로 속도 계산 후 가우시안 필터로 스무딩
     """

@@ -44,7 +44,7 @@ bridge:
     scan_beams: 1080
 
     # map parameters
-    map_path: 'track'
+    map_path: 'map'
     map_img_ext: '.pgm'
 
     num_agent: 1
