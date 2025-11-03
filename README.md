@@ -31,8 +31,8 @@ Pure Pursuit 기반 경로 추종 및 조향 제어
 
 ### 1. F1TENTH Gym 설치
 ```bash
-git clone https://github.com/t0mark/f1tenth_gym.git
-cd f1tenth_gym && pip install -e .
+git clone https://github.com/t0mark/f1tenth.git -b gym gym
+cd gym && pip install -e .
 ```
 
 ### 의존성
@@ -46,6 +46,12 @@ sudo apt install ros-humble-cartographer ros-humble-cartographer-ros
 
 ### 4. ROS2 패키지 빌드
 ```bash
+mkdir -p ~/f1_ws
+
+git clone https://github.com/t0mark/f1tenth.git src
+# 하드웨어 사용 시
+git clone https://github.com/t0mark/f1tenth.git -b hw
+
 cd ~/f1_ws
 source /opt/ros/humble/setup.bash
 rosdep update
