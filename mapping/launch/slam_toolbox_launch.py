@@ -1,6 +1,9 @@
 import os
-import subprocess
-from datetime import datetime
+
+try:
+    from slam_toolbox.srv import SaveMap
+except ImportError:
+    SaveMap = None
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -23,19 +26,59 @@ def _save_slam_toolbox_map(map_stem: str):
     map_dir = os.path.dirname(map_stem) or '.'
     os.makedirs(map_dir, exist_ok=True)
 
-    LOGGER.info('Saving slam_toolbox map to %s.[yaml|pgm]', map_stem)
+    if SaveMap is None:
+        LOGGER.error('Map save failed (slam_toolbox SaveMap service definition unavailable).')
+        return []
+
     try:
-        subprocess.run(
-            [
-                'ros2', 'run', 'slam_toolbox', 'save_map',
-                '--', '-f', map_stem,
-            ],
-            check=True,
-        )
-    except FileNotFoundError as exc:
-        LOGGER.error('Map save failed (command missing: %s).', exc)
-    except subprocess.CalledProcessError as exc:
-        LOGGER.error('Map save failed with exit code %s.', exc.returncode)
+        import rclpy
+    except ImportError as exc:
+        LOGGER.error('Map save failed (rclpy import error: %s).', exc)
+        return []
+
+    LOGGER.info('Saving slam_toolbox map via save_map service to %s.[yaml|pgm]', map_stem)
+    context = rclpy.Context()
+    node = None
+    try:
+        rclpy.init(context=context)
+        node = rclpy.create_node('slam_toolbox_map_saver', context=context)
+
+        client = node.create_client(SaveMap, '/slam_toolbox/save_map')
+        if not client.wait_for_service(timeout_sec=5.0):
+            LOGGER.error('Map save failed (service /slam_toolbox/save_map unavailable).')
+            return []
+
+        request = SaveMap.Request()
+        request.name.data = map_stem
+
+        future = client.call_async(request)
+        try:
+            rclpy.spin_until_future_complete(node, future, timeout_sec=15.0)
+        except Exception as exc:  # pylint: disable=broad-except
+            LOGGER.error('Map save failed while waiting for response: %s', exc)
+            return []
+
+        if not future.done():
+            LOGGER.error('Map save failed (service call timed out).')
+            return []
+
+        response = future.result()
+        if response is None:
+            LOGGER.error('Map save failed (no response received).')
+            return []
+
+        if response.result != response.RESULT_SUCCESS:
+            LOGGER.error('Map save failed with result code %s.', response.result)
+            return []
+
+        LOGGER.info('Map saved successfully to %s.[yaml|pgm]', map_stem)
+    except Exception as exc:  # pylint: disable=broad-except
+        LOGGER.error('Map save failed: %s', exc)
+    finally:
+        if node is not None:
+            node.destroy_node()
+        if context.ok():
+            rclpy.shutdown(context=context)
 
     return []
 
@@ -48,10 +91,9 @@ def generate_launch_description():
     localization_launch = os.path.join(
         get_package_share_directory('localization'), 'launch', 'ekf_launch.py')
 
-    default_maps_dir = os.path.join(os.path.expanduser('~'), 'f1tenth', 'maps')
+    default_maps_dir = os.path.join(get_package_share_directory('f1tenth'), 'maps')
     os.makedirs(default_maps_dir, exist_ok=True)
-    default_map_stem = os.path.join(
-        default_maps_dir, datetime.now().strftime('map_%Y%m%d_%H%M%S'))
+    default_map_stem = os.path.join(default_maps_dir, 'new')
 
     map_output_argument = DeclareLaunchArgument(
         'map_output_stem',
