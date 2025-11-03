@@ -8,6 +8,6 @@ global_planner:
     node_name: 'global_checkpoint_node'
 
     # 체크포인트 로딩 파라미터
-    checkpoint_csv_path: '${WORKSPACE_ROOT}/src/path_planner/path_planner/data/checkpoints.csv'
+    checkpoint_csv_path: '${WORKSPACE_ROOT}/src/path_planner/data/checkpoints.csv'
     publish_topic: '/global_path'
     initial_pose_topic: '/initialpose'
