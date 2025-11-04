@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 import os
+import csv
 import numpy as np
+
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
+
 from nav_msgs.msg import Path
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from builtin_interfaces.msg import Time
-import csv
 from ament_index_python.packages import get_package_share_directory
 
 
@@ -15,153 +17,204 @@ class GlobalCheckpointNode(Node):
     def __init__(self):
         super().__init__('global_checkpoint_node')
 
-        # 파라미터 설정
+        # 파라미터
         self.declare_parameter('checkpoint_csv_path', '')
         self.declare_parameter('publish_topic', '/global_path')
         self.declare_parameter('initial_pose_topic', '/initialpose')
+        # 얼마나 길게 만들지
+        self.declare_parameter('repeat_count', 30)
+        # 재샘플할 간격 (m)
+        self.declare_parameter('resample_step', 0.25)
 
         csv_filename = self.get_parameter('checkpoint_csv_path').get_parameter_value().string_value
         self.topic = self.get_parameter('publish_topic').get_parameter_value().string_value
         self.initial_pose_topic = self.get_parameter('initial_pose_topic').get_parameter_value().string_value
+        self.repeat_count = self.get_parameter('repeat_count').get_parameter_value().integer_value
+        self.resample_step = self.get_parameter('resample_step').get_parameter_value().double_value
 
         if not csv_filename:
             raise RuntimeError('checkpoint_csv_path parameter (filename) is required')
 
-        # 파일 이름으로부터 전체 경로 생성
         pkg_share = get_package_share_directory('path_planner')
         self.csv_path = os.path.join(pkg_share, 'data', csv_filename)
 
-        # CSV에서 체크포인트를 불러옵니다.
-        self.waypoints_xy = self._load_checkpoints(self.csv_path)
-        self.get_logger().info(f'Loaded {len(self.waypoints_xy)} checkpoints from {self.csv_path}')
+        # 원본 포인트
+        raw_pts = self._load_checkpoints(self.csv_path)
+        self.get_logger().info(f'Loaded {len(raw_pts)} raw checkpoints from {self.csv_path}')
 
-        # 시작 웨이포인트 인덱스(RViz의 2D Pose Estimate로 갱신됨)
+        # ★ 재샘플해서 일정 간격으로 된 폐곡선 만들기
+        self.base_waypoints = self._resample_closed_path(raw_pts, self.resample_step)
+        self.get_logger().info(f'Resampled to {len(self.base_waypoints)} points (step={self.resample_step} m)')
+
+        # 시작 인덱스
         self.start_index = 0
-
-        # Path 메시지를 준비합니다.
         self.frame_id = 'map'
 
-        # 퍼블리셔 설정(TRANSIENT_LOCAL QoS로 래치와 유사한 동작을 제공합니다.)
-        qos = QoSProfile(depth=1,
-                         reliability=ReliabilityPolicy.RELIABLE,
-                         durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        # 퍼블리셔
+        qos = QoSProfile(
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
         self.pub = self.create_publisher(Path, self.topic, qos)
 
-        # RViz의 2D Pose Estimate(`/initialpose`)를 구독합니다.
+        # initialpose
         self.pose_sub = self.create_subscription(
             PoseWithCovarianceStamped,
             self.initial_pose_topic,
             self._initial_pose_callback,
-            10
+            10,
         )
 
-        # 타임스탬프 유지를 위해 주기적으로 퍼블리시합니다.
-        self.timer = self.create_timer(1.0, self._publish_path)
+        # 한 번 내보내고 가끔만 갱신
         self._publish_path()
+        self.timer = self.create_timer(5.0, self._publish_path)
 
+    # --------------------------------------------------------------
     def _load_checkpoints(self, csv_path):
-        """CSV 파일에서 체크포인트(x, y 열)를 불러옵니다."""
-        waypoints = []
+        pts = []
         with open(csv_path, 'r') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 try:
                     x = float(row['x'])
                     y = float(row['y'])
-                    waypoints.append((x, y))
+                    pts.append((x, y))
                 except (ValueError, KeyError):
-                    # 잘못된 행은 건너뜁니다.
                     pass
-        return waypoints
+        return pts
 
+    # --------------------------------------------------------------
+    def _resample_closed_path(self, pts, step):
+        """
+        pts: [(x,y), ...] 폐곡선이라고 가정
+        step: 원하는 점 간격
+        -> 일정 간격으로 다시 찍힌 [(x,y), ...] 리턴
+        """
+        if len(pts) < 2:
+            return pts
+
+        # 끝과 시작 잇기 위해 한 점 더
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        xs.append(pts[0][0])
+        ys.append(pts[0][1])
+
+        # 각 세그먼트 길이
+        seg_lengths = []
+        total_len = 0.0
+        for i in range(len(xs) - 1):
+            dx = xs[i+1] - xs[i]
+            dy = ys[i+1] - ys[i]
+            d = (dx**2 + dy**2) ** 0.5
+            seg_lengths.append(d)
+            total_len += d
+
+        # 총길이만큼 step으로 자르기
+        num_out = max(2, int(total_len / step))
+        out_pts = []
+        cur_seg = 0
+        cur_seg_pos = 0.0  # 현재 세그먼트 안에서 얼마나 왔는지
+        cur_x = xs[0]
+        cur_y = ys[0]
+        out_pts.append((cur_x, cur_y))
+
+        for k in range(1, num_out):
+            target_dist = k * step
+            # 현재 out_pts[-1]에서 target_dist만큼 앞으로 가야 함
+            # 세그먼트 따라가면서 위치 찾기
+            dist_left = target_dist - ( (k-1) * step )
+            # 실제로는 step씩 늘어가니까 dist_left는 step이랑 같지만, 구조 그대로 두자
+            move = step
+            while move > 0 and cur_seg < len(seg_lengths):
+                seg_len = seg_lengths[cur_seg]
+                # 세그먼트 남은 길이
+                seg_left = seg_len - cur_seg_pos
+                if move <= seg_left + 1e-6:
+                    # 이 세그먼트 안에서 해결
+                    ratio = move / seg_len
+                    cur_x = xs[cur_seg] + (xs[cur_seg+1] - xs[cur_seg]) * ((cur_seg_pos + move) / seg_len)
+                    cur_y = ys[cur_seg] + (ys[cur_seg+1] - ys[cur_seg]) * ((cur_seg_pos + move) / seg_len)
+                    cur_seg_pos += move
+                    move = 0
+                else:
+                    # 이 세그먼트 끝까지 가고 다음 세그먼트로
+                    move -= seg_left
+                    cur_seg += 1
+                    cur_seg_pos = 0.0
+                    if cur_seg >= len(seg_lengths):
+                        # 안전장치
+                        cur_x = xs[-1]
+                        cur_y = ys[-1]
+                        break
+            out_pts.append((cur_x, cur_y))
+
+        return out_pts
+
+    # --------------------------------------------------------------
     def _initial_pose_callback(self, msg: PoseWithCovarianceStamped):
-        """
-        RViz에서 들어오는 2D Pose Estimate 콜백입니다.
-        현재 자세 방향과 가장 잘 맞는 가까운 웨이포인트를 찾습니다.
-        """
         pose_x = msg.pose.pose.position.x
         pose_y = msg.pose.pose.position.y
 
-        # 쿼터니언에서 요 각도를 추출합니다.
         q = msg.pose.pose.orientation
-        pose_yaw = np.arctan2(2.0 * (q.w * q.z + q.x * q.y),
-                              1.0 - 2.0 * (q.y * q.y + q.z * q.z))
-
-        # 자세가 향하는 방향 벡터를 계산합니다.
+        pose_yaw = np.arctan2(
+            2.0 * (q.w * q.z + q.x * q.y),
+            1.0 - 2.0 * (q.y * q.y + q.z * q.z),
+        )
         pose_dir = np.array([np.cos(pose_yaw), np.sin(pose_yaw)])
 
-        # 방향까지 일치하는 가장 가까운 웨이포인트를 찾습니다.
-        best_index = 0
-        best_score = -float('inf')
+        best_idx = 0
+        best_score = -1e9
 
-        for i in range(len(self.waypoints_xy)):
-            wx, wy = self.waypoints_xy[i]
+        for i, (wx, wy) in enumerate(self.base_waypoints):
+            dist = np.hypot(wx - pose_x, wy - pose_y)
 
-            # 웨이포인트까지의 거리를 계산합니다.
-            dist = np.sqrt((wx - pose_x)**2 + (wy - pose_y)**2)
-
-            # 다음 웨이포인트로 향하는 방향을 계산합니다.
-            next_i = (i + 1) % len(self.waypoints_xy)
-            next_wx, next_wy = self.waypoints_xy[next_i]
-            wp_dir = np.array([next_wx - wx, next_wy - wy])
-            wp_dir_norm = np.linalg.norm(wp_dir)
-
-            if wp_dir_norm > 0.001:
-                wp_dir = wp_dir / wp_dir_norm
-
-                # 내적을 통해 현재 자세 방향과의 정렬도를 구합니다.
-                alignment = np.dot(pose_dir, wp_dir)
-
-                # 점수는 가까우면서 정렬이 좋은 웨이포인트에 높은 값을 줍니다.
-                # 정렬도가 높고 거리가 짧을수록 점수가 올라갑니다.
-                score = alignment - 0.5 * dist
-
+            next_i = (i + 1) % len(self.base_waypoints)
+            nx, ny = self.base_waypoints[next_i]
+            seg = np.array([nx - wx, ny - wy])
+            seg_norm = np.linalg.norm(seg)
+            if seg_norm > 1e-3:
+                seg = seg / seg_norm
+                alignment = np.dot(pose_dir, seg)
+                score = alignment - 0.1 * dist
                 if score > best_score:
                     best_score = score
-                    best_index = i
+                    best_idx = i
 
-        self.start_index = best_index
+        self.start_index = best_idx
         self.get_logger().info(
-            f'2D Pose Estimate received: ({pose_x:.2f}, {pose_y:.2f}, yaw={np.degrees(pose_yaw):.1f}°). '
-            f'Starting from waypoint index {self.start_index}'
+            f"initialpose → start idx {self.start_index} (x={pose_x:.2f}, y={pose_y:.2f})"
         )
-
-        # 갱신된 경로를 즉시 퍼블리시합니다.
         self._publish_path()
 
+    # --------------------------------------------------------------
     def _stamp_now(self) -> Time:
         return self.get_clock().now().to_msg()
 
+    # --------------------------------------------------------------
     def _publish_path(self):
-        """start_index부터 경로를 퍼블리시합니다."""
         path_msg = Path()
         path_msg.header.frame_id = self.frame_id
         path_msg.header.stamp = self._stamp_now()
 
-        # start_index부터 순환 경로를 생성합니다.
-        n = len(self.waypoints_xy)
-        for i in range(n):
-            idx = (self.start_index + i) % n
-            x, y = self.waypoints_xy[idx]
+        n = len(self.base_waypoints)
+        if n == 0:
+            self.pub.publish(path_msg)
+            return
 
-            ps = PoseStamped()
-            ps.header.frame_id = self.frame_id
-            ps.header.stamp = path_msg.header.stamp
-            ps.pose.position.x = float(x)
-            ps.pose.position.y = float(y)
-            ps.pose.orientation.w = 1.0
-            path_msg.poses.append(ps)
+        # 재샘플된 폐곡선을 여러 번 이어붙여서 사실상 무한 경로처럼
+        for r in range(self.repeat_count):
+            for i in range(n):
+                idx = (self.start_index + i) % n
+                x, y = self.base_waypoints[idx]
 
-        # 첫 번째 웨이포인트를 다시 추가해 루프를 닫습니다.
-        if len(self.waypoints_xy) > 0:
-            x, y = self.waypoints_xy[self.start_index]
-            ps = PoseStamped()
-            ps.header.frame_id = self.frame_id
-            ps.header.stamp = path_msg.header.stamp
-            ps.pose.position.x = float(x)
-            ps.pose.position.y = float(y)
-            ps.pose.orientation.w = 1.0
-            path_msg.poses.append(ps)
+                ps = PoseStamped()
+                ps.header.frame_id = self.frame_id
+                ps.header.stamp = path_msg.header.stamp
+                ps.pose.position.x = float(x)
+                ps.pose.position.y = float(y)
+                ps.pose.orientation.w = 1.0
+                path_msg.poses.append(ps)
 
         self.pub.publish(path_msg)
 
@@ -174,3 +227,7 @@ def main(args=None):
     finally:
         node.destroy_node()
         rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
