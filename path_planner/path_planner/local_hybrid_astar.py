@@ -78,6 +78,11 @@ class HybridAStarLocalPlanner(Node):
         self.declare_parameter('local_graph_marker_topic', '/local_graph_markers')
         self.declare_parameter('local_graph_marker_scale', 0.08)
         self.declare_parameter('local_graph_edge_scale', 0.03)
+        self.declare_parameter('use_local_graph_planner', True)
+        self.declare_parameter('graph_match_max_distance', 1.0)
+        self.declare_parameter('graph_yaw_weight', 1.5)
+        self.declare_parameter('graph_goal_tolerance', 0.5)
+        self.declare_parameter('graph_collision_step', 0.1)
 
         # Parameter retrieval
         self.global_path_topic = self.get_parameter('global_path_topic').get_parameter_value().string_value
@@ -120,6 +125,11 @@ class HybridAStarLocalPlanner(Node):
         self.local_graph_marker_topic = self.get_parameter('local_graph_marker_topic').get_parameter_value().string_value
         self.local_graph_marker_scale = max(1e-3, float(self.get_parameter('local_graph_marker_scale').value))
         self.local_graph_edge_scale = max(1e-3, float(self.get_parameter('local_graph_edge_scale').value))
+        self.use_local_graph_planner = bool(self.get_parameter('use_local_graph_planner').value)
+        self.graph_match_max_distance = max(0.05, float(self.get_parameter('graph_match_max_distance').value))
+        self.graph_yaw_weight = max(1e-3, float(self.get_parameter('graph_yaw_weight').value))
+        self.graph_goal_tolerance = max(0.05, float(self.get_parameter('graph_goal_tolerance').value))
+        self.graph_collision_step = max(0.02, float(self.get_parameter('graph_collision_step').value))
 
         # Derived costmap sizes
         self.grid_cols = max(3, int(math.ceil(self.grid_width / self.grid_resolution)))
@@ -147,6 +157,9 @@ class HybridAStarLocalPlanner(Node):
         self.local_graph_edges_from: Optional[np.ndarray] = None
         self.local_graph_edges_to: Optional[np.ndarray] = None
         self.local_graph_edges_cost: Optional[np.ndarray] = None
+        self.local_graph_neighbors: List[np.ndarray] = []
+        self.local_graph_neighbor_costs: List[np.ndarray] = []
+        self.local_graph_closed_loop: bool = False
         self.local_graph_index_map: Dict[Tuple[int, int, int], int] = {}
         self.local_graph_meta: Dict[str, object] = {}
         self.graph_marker_pub = None
@@ -305,6 +318,21 @@ class HybridAStarLocalPlanner(Node):
         if not self.local_graph_enabled:
             return
 
+        self.local_graph_positions = None
+        self.local_graph_yaws = None
+        self.local_graph_s_values = None
+        self.local_graph_lateral_offsets = None
+        self.local_graph_heading_offsets = None
+        self.local_graph_indices = None
+        self.local_graph_edges_from = None
+        self.local_graph_edges_to = None
+        self.local_graph_edges_cost = None
+        self.local_graph_neighbors = []
+        self.local_graph_neighbor_costs = []
+        self.local_graph_index_map = {}
+        self.local_graph_meta = {}
+        self.local_graph_closed_loop = False
+
         if self.local_graph_dir_param:
             base_dir = PathLib(self.local_graph_dir_param).expanduser()
             if not base_dir.is_absolute():
@@ -356,6 +384,26 @@ class HybridAStarLocalPlanner(Node):
         finally:
             npz_file.close()
 
+        node_count = int(self.local_graph_positions.shape[0])
+        neighbor_lists: List[List[int]] = [[] for _ in range(node_count)]
+        neighbor_cost_lists: List[List[float]] = [[] for _ in range(node_count)]
+        if self.local_graph_edges_from is not None and self.local_graph_edges_to is not None and self.local_graph_edges_cost is not None:
+            for src, dst, cost in zip(
+                self.local_graph_edges_from.tolist(),
+                self.local_graph_edges_to.tolist(),
+                self.local_graph_edges_cost.tolist()
+            ):
+                neighbor_lists[src].append(int(dst))
+                neighbor_cost_lists[src].append(float(cost))
+        self.local_graph_neighbors = [
+            np.array(lst, dtype=np.int32) if lst else np.empty(0, dtype=np.int32)
+            for lst in neighbor_lists
+        ]
+        self.local_graph_neighbor_costs = [
+            np.array(lst, dtype=np.float32) if lst else np.empty(0, dtype=np.float32)
+            for lst in neighbor_cost_lists
+        ]
+
         if index_path.exists():
             try:
                 with index_path.open('r', encoding='utf-8') as f:
@@ -380,11 +428,14 @@ class HybridAStarLocalPlanner(Node):
                     meta = json.load(f)
                 if isinstance(meta, dict):
                     self.local_graph_meta = meta
+                    self.local_graph_closed_loop = bool(meta.get('closed_loop', False))
             except Exception as exc:
                 self.get_logger().warn(f'로컬 그래프 메타데이터를 읽지 못했습니다: {exc}')
                 self.local_graph_meta = {}
+                self.local_graph_closed_loop = False
         else:
             self.local_graph_meta = {}
+            self.local_graph_closed_loop = False
 
         node_count = int(self.local_graph_positions.shape[0])
         edge_count = int(self.local_graph_edges_from.shape[0])
@@ -447,6 +498,185 @@ class HybridAStarLocalPlanner(Node):
 
         self.graph_marker_pub.publish(marker_array)
         self._graph_markers_sent = True
+
+    # --------------------------------------------------------------------- #
+    # Graph-based planning helpers
+    # --------------------------------------------------------------------- #
+    def _graph_match_pose(self, x: float, y: float, yaw: float, max_distance: Optional[float] = None) -> Optional[int]:
+        if self.local_graph_positions is None or self.local_graph_yaws is None:
+            return None
+
+        if max_distance is None:
+            max_distance = self.graph_match_max_distance
+
+        pos = np.array([x, y], dtype=np.float32)
+        diffs = self.local_graph_positions - pos
+        dist_sq = np.sum(diffs * diffs, axis=1)
+        yaw_diff = np.abs(wrap_angle(self.local_graph_yaws - yaw))
+        score = dist_sq + (self.graph_yaw_weight ** 2) * (yaw_diff ** 2)
+
+        if score.size == 0:
+            return None
+
+        best_idx = int(np.argmin(score))
+        best_dist = math.sqrt(float(dist_sq[best_idx]))
+        if best_dist > max_distance:
+            if best_dist <= max_distance * 2.0:
+                self.get_logger().warn(
+                    f'그래프 노드 매칭: 거리 {best_dist:.2f}m로 허용 범위({max_distance:.2f}m)를 초과하지만 '
+                    '가장 가까운 노드를 임시 사용합니다.'
+                )
+                return best_idx
+            return None
+        return best_idx
+
+    def _graph_edge_blocked(self, src_id: int, dst_id: int) -> Tuple[bool, float]:
+        if self.local_graph_positions is None:
+            return True, 1.0
+
+        start = self.local_graph_positions[src_id]
+        end = self.local_graph_positions[dst_id]
+        distance = math.hypot(float(end[0] - start[0]), float(end[1] - start[1]))
+        if distance < 1e-6:
+            return False, 0.0
+
+        step = max(self.graph_collision_step, self.grid_resolution * 0.5)
+        steps = max(2, int(math.ceil(distance / step)))
+        max_cell_cost = 0.0
+
+        for i in range(steps + 1):
+            t = i / steps
+            x = float(start[0] + (end[0] - start[0]) * t)
+            y = float(start[1] + (end[1] - start[1]) * t)
+
+            if self._static_map_collision(x, y):
+                return True, 1.0
+
+            cell_cost = self._cell_value(x, y)
+            if cell_cost >= 1.0:
+                return True, cell_cost
+            max_cell_cost = max(max_cell_cost, cell_cost)
+
+        return False, max_cell_cost
+
+    def _graph_heuristic(self, node_id: int, goal_pos: np.ndarray, goal_yaw: float) -> float:
+        if self.local_graph_positions is None or self.local_graph_yaws is None:
+            return 0.0
+
+        node_pos = self.local_graph_positions[node_id]
+        distance = math.hypot(float(node_pos[0] - goal_pos[0]), float(node_pos[1] - goal_pos[1]))
+        yaw_error = abs(wrap_angle(float(self.local_graph_yaws[node_id]) - goal_yaw))
+        path_deviation = self._get_path_deviation(float(node_pos[0]), float(node_pos[1]))
+        map_penalty = self._get_map_based_penalty(float(node_pos[0]), float(node_pos[1]))
+
+        return (
+            self.heuristic_weight * distance
+            + 0.3 * yaw_error
+            + self.global_path_deviation_weight * path_deviation
+            + self.static_map_penalty_weight * map_penalty
+        )
+
+    def _graph_reconstruct_path(self, goal_node: int, came_from: Dict[int, Optional[int]]) -> List[int]:
+        path: List[int] = []
+        current: Optional[int] = goal_node
+        while current is not None:
+            path.append(current)
+            current = came_from.get(current)
+        path.reverse()
+        return path
+
+    def _graph_nodes_to_states(self, node_ids: List[int]) -> List[HybridState]:
+        if self.local_graph_positions is None or self.local_graph_yaws is None:
+            return []
+
+        states: List[HybridState] = []
+        for node_id in node_ids:
+            pos = self.local_graph_positions[node_id]
+            yaw = float(self.local_graph_yaws[node_id])
+            states.append(HybridState(x=float(pos[0]), y=float(pos[1]), yaw=yaw, steering=0.0))
+        return states
+
+    def _plan_graph_astar(self, goal: Dict[str, float]) -> Optional[List[HybridState]]:
+        if (
+            self.local_graph_positions is None
+            or self.local_graph_neighbors is None
+            or len(self.local_graph_neighbors) == 0
+        ):
+            return None
+        if self.latest_pose is None:
+            return None
+
+        robot_x, robot_y, robot_yaw = self.latest_pose
+        start_id = self._graph_match_pose(robot_x, robot_y, robot_yaw)
+        if start_id is None:
+            self.get_logger().warn('그래프 기반 플래너: 시작 노드를 찾지 못했습니다.')
+            return None
+
+        goal_pos = np.array([goal['x'], goal['y']], dtype=np.float32)
+        goal_yaw = goal['yaw']
+
+        open_list: List[Tuple[float, float, int]] = []
+        g_scores: Dict[int, float] = {start_id: 0.0}
+        came_from: Dict[int, Optional[int]] = {start_id: None}
+
+        start_h = self._graph_heuristic(start_id, goal_pos, goal_yaw)
+        heapq.heappush(open_list, (start_h, 0.0, start_id))
+
+        expansions = 0
+        edges_checked = 0
+
+        while open_list and expansions < self.max_iterations:
+            _, current_g, current_id = heapq.heappop(open_list)
+            if current_g > g_scores.get(current_id, float('inf')) + 1e-6:
+                continue
+
+            node_pos = self.local_graph_positions[current_id]
+            if math.hypot(float(node_pos[0] - goal_pos[0]), float(node_pos[1] - goal_pos[1])) <= self.graph_goal_tolerance:
+                node_path = self._graph_reconstruct_path(current_id, came_from)
+                states = self._graph_nodes_to_states(node_path)
+                self.get_logger().debug(
+                    f'그래프 기반 플래너 성공: 확장 {expansions}회, 검사 엣지 {edges_checked}개, 경로 길이 {len(states)}'
+                )
+                return states
+
+            neighbor_ids = self.local_graph_neighbors[current_id]
+            neighbor_costs = self.local_graph_neighbor_costs[current_id]
+            expansions += 1
+
+            for neigh_id, base_cost in zip(neighbor_ids, neighbor_costs):
+                edges_checked += 1
+                blocked, obstacle_factor = self._graph_edge_blocked(current_id, int(neigh_id))
+                if blocked:
+                    continue
+
+                neighbour_pos = self.local_graph_positions[int(neigh_id)]
+                yaw_penalty = self.steering_change_weight * abs(
+                    wrap_angle(float(self.local_graph_yaws[int(neigh_id)]) - float(self.local_graph_yaws[current_id]))
+                )
+                path_penalty = self.path_distance_weight * self._get_path_deviation(
+                    float(neighbour_pos[0]),
+                    float(neighbour_pos[1])
+                )
+                map_penalty = self.static_map_penalty_weight * self._get_map_based_penalty(
+                    float(neighbour_pos[0]),
+                    float(neighbour_pos[1])
+                )
+                obstacle_penalty = self.obstacle_cost_weight * obstacle_factor
+
+                tentative_g = current_g + float(base_cost) + yaw_penalty + path_penalty + map_penalty + obstacle_penalty
+
+                if tentative_g >= g_scores.get(int(neigh_id), float('inf')) - 1e-6:
+                    continue
+
+                g_scores[int(neigh_id)] = tentative_g
+                came_from[int(neigh_id)] = current_id
+                heuristic = self._graph_heuristic(int(neigh_id), goal_pos, goal_yaw)
+                heapq.heappush(open_list, (tentative_g + heuristic, tentative_g, int(neigh_id)))
+
+        self.get_logger().warn(
+            f'그래프 기반 플래너 실패: 확장 {expansions}회, 검사 엣지 {edges_checked}개'
+        )
+        return None
 
     # --------------------------------------------------------------------- #
     # Costmap utilities
@@ -798,6 +1028,13 @@ class HybridAStarLocalPlanner(Node):
     # Hybrid A* search
     # --------------------------------------------------------------------- #
     def _plan_hybrid_astar(self, goal: Dict[str, float]) -> Optional[List[HybridState]]:
+        if self.use_local_graph_planner and self.local_graph_positions is not None:
+            graph_path = self._plan_graph_astar(goal)
+            if graph_path:
+                return graph_path
+            else:
+                self.get_logger().warn('그래프 기반 플래너가 실패하여 기존 Hybrid A*로 폴백합니다.')
+
         if self.latest_pose is None:
             return None
 
