@@ -115,6 +115,7 @@ class HybridAStarLocalPlanner(Node):
 
         # Runtime state
         self.global_path_np: Optional[np.ndarray] = None  # shape (N, 3) for x, y, yaw
+        self.global_path_tree: Optional[cKDTree] = None  # KDTree for fast path deviation query
         self.latest_scan: Optional[LaserScan] = None
         self.latest_pose: Optional[Tuple[float, float, float]] = None  # x, y, yaw
         self.last_path_msg: Optional[Path] = None
@@ -191,6 +192,7 @@ class HybridAStarLocalPlanner(Node):
     def _on_global_path(self, msg: Path) -> None:
         if not msg.poses:
             self.global_path_np = None
+            self.global_path_tree = None
             return
 
         points = []
@@ -213,6 +215,12 @@ class HybridAStarLocalPlanner(Node):
             points.append((x, y, yaw))
 
         self.global_path_np = np.array(points, dtype=float)
+
+        # KDTree 빌드 (경로 편차 계산 최적화용)
+        if len(self.global_path_np) > 0:
+            self.global_path_tree = cKDTree(self.global_path_np[:, :2])
+        else:
+            self.global_path_tree = None
 
     def _on_scan(self, msg: LaserScan) -> None:
         self.latest_scan = msg
@@ -809,59 +817,14 @@ class HybridAStarLocalPlanner(Node):
         else:  # Free (0~20)
             return 0.0
 
-    def _point_to_segment_distance(self, point: np.ndarray, seg_start: np.ndarray, seg_end: np.ndarray) -> float:
-        """점에서 선분까지의 최단 거리"""
-        px, py = point[0], point[1]
-        x1, y1 = seg_start[0], seg_start[1]
-        x2, y2 = seg_end[0], seg_end[1]
-
-        dx = x2 - x1
-        dy = y2 - y1
-
-        if abs(dx) < 1e-9 and abs(dy) < 1e-9:
-            return math.hypot(px - x1, py - y1)
-
-        # 선분에 투영
-        t = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)))
-        proj_x = x1 + t * dx
-        proj_y = y1 + t * dy
-
-        return math.hypot(px - proj_x, py - proj_y)
-
     def _get_path_deviation(self, x: float, y: float) -> float:
-        """글로벌 경로로부터의 거리 계산 (로봇 위치 기준 최적화)"""
-        if self.global_path_np is None or len(self.global_path_np) < 2:
+        """글로벌 경로로부터의 거리 계산 (KDTree 기반 O(log N) 쿼리)"""
+        if self.global_path_tree is None:
             return 0.0
 
-        if self.latest_pose is None:
-            return 0.0
-
-        # 로봇 현재 위치 기준으로 가까운 경로 세그먼트만 검색
-        robot_pos = np.array([self.latest_pose[0], self.latest_pose[1]])
-
-        # 로봇 위치에서 가장 가까운 글로벌 경로 포인트 찾기
-        distances_to_robot = np.linalg.norm(self.global_path_np[:, :2] - robot_pos, axis=1)
-        closest_to_robot_idx = int(np.argmin(distances_to_robot))
-
-        # 로봇 앞쪽 경로만 검색 (현재 위치 +10 ~ +40 범위, 총 30개)
-        lookahead_offset = 10
-        search_range = 30
-        start_idx = min(len(self.global_path_np) - 1, closest_to_robot_idx + lookahead_offset)
-        end_idx = min(len(self.global_path_np) - 1, start_idx + search_range)
-
-        # 현재 상태에서 가까운 세그먼트까지의 거리 계산
-        state_pos = np.array([x, y])
-        min_dist = float('inf')
-
-        for i in range(start_idx, end_idx):
-            if i + 1 >= len(self.global_path_np):
-                break
-            p1 = self.global_path_np[i, :2]
-            p2 = self.global_path_np[i + 1, :2]
-            dist = self._point_to_segment_distance(state_pos, p1, p2)
-            min_dist = min(min_dist, dist)
-
-        return min_dist
+        # KDTree로 최근접 경로 포인트까지의 거리 쿼리
+        dist, _ = self.global_path_tree.query([x, y])
+        return float(dist)
 
     # --------------------------------------------------------------------- #
     # Goal selection and heuristics
