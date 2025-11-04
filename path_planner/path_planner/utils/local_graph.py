@@ -33,9 +33,6 @@ class GraphData:
     node_heading_offsets: np.ndarray
     node_curvatures: np.ndarray
     node_wall_distances: np.ndarray
-    node_curvature_cost: np.ndarray
-    node_wall_cost: np.ndarray
-    node_total_cost: np.ndarray
     node_indices: np.ndarray
     edges_from: np.ndarray
     edges_to: np.ndarray
@@ -249,15 +246,6 @@ def sample_wall_distances(
     return distances
 
 
-def compute_curvature_costs(
-    curvature: np.ndarray,
-    curvature_weight: float,
-) -> np.ndarray:
-    if curvature_weight <= 0.0:
-        return np.zeros_like(curvature, dtype=np.float32)
-    return np.abs(curvature.astype(np.float32)) * float(curvature_weight)
-
-
 def build_graph(
     centerline: np.ndarray,
     headings: np.ndarray,
@@ -331,16 +319,6 @@ def build_graph(
         map_resolution,
         wall_distance_threshold,
     )
-    node_curv_cost_flat = compute_curvature_costs(
-        node_curv_flat,
-        curvature_cost_weight,
-    )
-    if wall_distance_threshold > 1e-6:
-        node_wall_cost_flat = np.clip((wall_distance_threshold - node_wall_dist_flat) / wall_distance_threshold, 0.0, 1.0)
-    else:
-        node_wall_cost_flat = np.zeros_like(node_wall_dist_flat, dtype=np.float32)
-    node_total_cost_flat = node_wall_cost_flat + node_curv_cost_flat
-
     s_indices = np.arange(num_s, dtype=np.int32)
     l_indices = np.arange(num_lat, dtype=np.int32)
     h_indices = np.arange(num_head, dtype=np.int32)
@@ -368,7 +346,10 @@ def build_graph(
             biased_offsets[s_idx_b, lat_idx_b] - biased_offsets[s_idx_a, lat_idx_a]
         )
         heading_delta = abs(head_offsets[head_idx_b] - head_offsets[head_idx_a])
-        weight = 1.0 + lateral_weight * lateral_delta + heading_weight * heading_delta
+        curvature_penalty = curvature_cost_weight * 0.5 * (
+            abs(curvature[s_idx_a]) + abs(curvature[s_idx_b])
+        )
+        weight = 1.0 + lateral_weight * lateral_delta + heading_weight * heading_delta + curvature_penalty
         edges_from.append(a)
         edges_to.append(b)
         edges_cost.append(dist * weight)
@@ -409,9 +390,6 @@ def build_graph(
         node_heading_offsets=node_h_flat,
         node_curvatures=node_curv_flat,
         node_wall_distances=node_wall_dist_flat,
-        node_curvature_cost=node_curv_cost_flat,
-        node_wall_cost=node_wall_cost_flat,
-        node_total_cost=node_total_cost_flat,
         node_indices=node_indices,
         edges_from=np.asarray(edges_from, dtype=np.int32),
         edges_to=np.asarray(edges_to, dtype=np.int32),
@@ -436,9 +414,6 @@ def save_graph(graph: GraphData, data_dir: Path, prefix: str, meta: dict) -> Non
         node_heading_offsets=graph.node_heading_offsets,
         node_curvatures=graph.node_curvatures,
         node_wall_distances=graph.node_wall_distances,
-        node_curvature_cost=graph.node_curvature_cost,
-        node_wall_cost=graph.node_wall_cost,
-        node_total_cost=graph.node_total_cost,
         node_indices=graph.node_indices,
         edges_from=graph.edges_from,
         edges_to=graph.edges_to,
@@ -550,7 +525,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--curvature-bias-gain',
         type=float,
-        default=3.0,
+        default=0.0,
         help='Gain to convert curvature (rad/m) into lateral offset bias (default: %(default)s)',
     )
     parser.add_argument(
@@ -683,6 +658,9 @@ def main() -> None:
             csv_path = (Path.cwd() / csv_path).resolve()
 
     csv_path.parent.mkdir(parents=True, exist_ok=True)
+    wall_thresh = float(meta.get('wall_distance_threshold', 0.0))
+    curvature_weight = float(meta.get('curvature_cost_weight', 0.0))
+
     with csv_path.open('w', newline='', encoding='utf-8') as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow([
@@ -697,15 +675,18 @@ def main() -> None:
             'curvature_cost',
             'total_cost',
         ])
-        for (s_idx, lat_idx, head_idx), pos, wall_dist, curv, wall_cost, curv_cost, total_cost in zip(
+        for (s_idx, lat_idx, head_idx), pos, wall_dist, curv in zip(
             graph.node_indices,
             graph.node_positions,
             graph.node_wall_distances,
             graph.node_curvatures,
-            graph.node_wall_cost,
-            graph.node_curvature_cost,
-            graph.node_total_cost,
         ):
+            if wall_thresh > 1e-6:
+                wall_cost = max(0.0, min(1.0, (wall_thresh - wall_dist) / wall_thresh))
+            else:
+                wall_cost = 0.0
+            curvature_cost = curvature_weight * abs(curv)
+            total_cost = wall_cost + curvature_cost
             writer.writerow([
                 int(s_idx),
                 int(lat_idx),
@@ -715,7 +696,7 @@ def main() -> None:
                 f'{float(wall_dist):.6f}',
                 f'{float(curv):.6f}',
                 f'{float(wall_cost):.6f}',
-                f'{float(curv_cost):.6f}',
+                f'{float(curvature_cost):.6f}',
                 f'{float(total_cost):.6f}',
             ])
 

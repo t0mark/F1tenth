@@ -164,6 +164,8 @@ class HybridAStarLocalPlanner(Node):
         self.local_graph_total_costs: Optional[np.ndarray] = None
         self.local_graph_dynamic_costs: Optional[np.ndarray] = None
         self.local_graph_tree = None
+        self.curvature_cost_weight = 0.0
+        self.wall_distance_threshold = 0.0
         self.local_graph_edges_from: Optional[np.ndarray] = None
         self.local_graph_edges_to: Optional[np.ndarray] = None
         self.local_graph_edges_cost: Optional[np.ndarray] = None
@@ -399,20 +401,9 @@ class HybridAStarLocalPlanner(Node):
                 self.local_graph_wall_distances = np.array(npz_file['node_wall_distances'], dtype=np.float32)
             else:
                 self.local_graph_wall_distances = np.zeros_like(self.local_graph_s_values, dtype=np.float32)
-            if 'node_curvature_cost' in npz_file:
-                self.local_graph_curvature_costs = np.array(npz_file['node_curvature_cost'], dtype=np.float32)
-            else:
-                self.local_graph_curvature_costs = np.zeros_like(self.local_graph_s_values, dtype=np.float32)
-            if 'node_wall_cost' in npz_file:
-                self.local_graph_wall_costs = np.array(npz_file['node_wall_cost'], dtype=np.float32)
-            else:
-                self.local_graph_wall_costs = np.zeros_like(self.local_graph_s_values, dtype=np.float32)
-            if 'node_total_cost' in npz_file:
-                self.local_graph_total_costs = np.array(npz_file['node_total_cost'], dtype=np.float32)
-            else:
-                self.local_graph_total_costs = (
-                    self.local_graph_curvature_costs + self.local_graph_wall_costs
-                )
+            self.local_graph_curvature_costs = None
+            self.local_graph_wall_costs = None
+            self.local_graph_total_costs = None
         finally:
             npz_file.close()
 
@@ -474,6 +465,26 @@ class HybridAStarLocalPlanner(Node):
         else:
             self.local_graph_meta = {}
             self.local_graph_closed_loop = False
+
+        wall_threshold = float(self.local_graph_meta.get('wall_distance_threshold', 0.0))
+        curvature_weight = float(self.local_graph_meta.get('curvature_cost_weight', 0.0))
+        if wall_threshold > 1e-6 and self.local_graph_wall_distances is not None:
+            self.local_graph_wall_costs = np.clip(
+                (wall_threshold - self.local_graph_wall_distances) / wall_threshold,
+                0.0,
+                1.0,
+            ).astype(np.float32)
+        else:
+            self.local_graph_wall_costs = np.zeros_like(self.local_graph_s_values, dtype=np.float32)
+        if self.local_graph_curvatures is not None:
+            self.local_graph_curvature_costs = (curvature_weight * np.abs(self.local_graph_curvatures)).astype(np.float32)
+        else:
+            self.local_graph_curvature_costs = np.zeros_like(self.local_graph_s_values, dtype=np.float32)
+        self.local_graph_total_costs = (
+            self.local_graph_curvature_costs + self.static_map_penalty_weight * self.local_graph_wall_costs
+        )
+        self.curvature_cost_weight = curvature_weight
+        self.wall_distance_threshold = wall_threshold
 
         node_count = int(self.local_graph_positions.shape[0])
         edge_count = int(self.local_graph_edges_from.shape[0])

@@ -38,12 +38,6 @@ setup(
             'local_graph = path_planner.utils.local_graph:main',
             'extract_centerline = path_planner.utils.utils:extract_centerline_cli',
             'checkpoint_recorder_node = path_planner.utils.checkpoint_recorder:main',
-            'centerline_logger_node = path_planner.centerline_logger:main',
-            'opponent_detection_node = path_planner.opponent_detection:main',
-            'opponent_tracking_node = path_planner.opponent_tracking:main',
-            'spliner_node = path_planner.spliner:main',
-            'state_machine_node = path_planner.state_machine:main',
-            'controller_node = path_planner.controller:main',
         ],
     },
 )
