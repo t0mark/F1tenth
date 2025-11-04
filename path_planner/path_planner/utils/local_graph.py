@@ -15,9 +15,12 @@ import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence, Tuple
+from typing import Optional, Sequence, Tuple
 
 import numpy as np
+import yaml
+from PIL import Image
+from scipy.ndimage import distance_transform_edt
 
 
 @dataclass(frozen=True)
@@ -27,6 +30,8 @@ class GraphData:
     node_s_values: np.ndarray
     node_lateral_offsets: np.ndarray
     node_heading_offsets: np.ndarray
+    node_curvatures: np.ndarray
+    node_wall_distances: np.ndarray
     node_indices: np.ndarray
     edges_from: np.ndarray
     edges_to: np.ndarray
@@ -38,55 +43,206 @@ def wrap_angle(angle: np.ndarray) -> np.ndarray:
     return (angle + math.pi) % (2.0 * math.pi) - math.pi
 
 
-def load_checkpoints(path: Path) -> np.ndarray:
-    data = np.genfromtxt(path, delimiter=',', skip_header=1)
-    if data.ndim == 1:
-        data = data.reshape(1, -1)
-    if data.shape[1] < 2:
-        raise ValueError(f'Checkpoint file {path} must contain at least two columns (x,y).')
-    return data[:, :2]
+def load_centerline_source(path: Path) -> dict:
+    raw = np.genfromtxt(path, delimiter=',', names=True, dtype=None, encoding=None)
+    if raw.size == 0:
+        raise ValueError(f'파일 {path} 에서 데이터를 읽을 수 없습니다.')
+    raw = np.atleast_1d(raw)
+    names = raw.dtype.names
+    if names is None or len(names) < 2:
+        raise ValueError(f'파일 {path} 에 적어도 x, y 열이 필요합니다.')
+
+    def _extract(name: str) -> Optional[np.ndarray]:
+        if name in names:
+            return np.asarray(raw[name], dtype=float)
+        return None
+
+    x = _extract('x_ref_m')
+    if x is None:
+        x = _extract('x')
+    y = _extract('y_ref_m')
+    if y is None:
+        y = _extract('y')
+    if x is None or y is None:
+        raise ValueError(f'파일 {path} 에 x 좌표와 y 좌표 열이 필요합니다.')
+
+    yaw = _extract('psi_racetraj_rad')
+    s = _extract('s_racetraj_m')
+    curvature = _extract('kappa_racetraj_radpm')
+
+    return {
+        'x': np.asarray(x, dtype=float),
+        'y': np.asarray(y, dtype=float),
+        'yaw': np.asarray(yaw, dtype=float) if yaw is not None else None,
+        's': np.asarray(s, dtype=float) if s is not None else None,
+        'curvature': np.asarray(curvature, dtype=float) if curvature is not None else None,
+    }
 
 
-def resample_centerline(points: np.ndarray, s_step: float, closed_loop: bool) -> Tuple[np.ndarray, np.ndarray, float]:
+def _compute_arc_length(x: np.ndarray, y: np.ndarray, closed_loop: bool) -> np.ndarray:
     if closed_loop:
-        if np.linalg.norm(points[0] - points[-1]) > 1e-6:
-            points_ext = np.vstack([points, points[:1]])
+        x_ext = np.append(x, x[0])
+        y_ext = np.append(y, y[0])
+        diff_x = np.diff(x_ext)
+        diff_y = np.diff(y_ext)
+        seg = np.hypot(diff_x, diff_y)
+        cumulative = np.cumsum(seg)
+        return np.concatenate(([0.0], cumulative[:-1]))
+    diff_x = np.diff(x)
+    diff_y = np.diff(y)
+    seg = np.hypot(diff_x, diff_y)
+    cumulative = np.concatenate(([0.0], np.cumsum(seg)))
+    return cumulative
+
+
+def _estimate_headings(x: np.ndarray, y: np.ndarray, s: np.ndarray, closed_loop: bool) -> np.ndarray:
+    if len(x) < 2:
+        return np.zeros_like(x)
+    if closed_loop and len(x) >= 3:
+        ds = np.gradient(s)
+        dx = np.gradient(x, ds, edge_order=2)
+        dy = np.gradient(y, ds, edge_order=2)
+    else:
+        dx = np.gradient(x, s, edge_order=2)
+        dy = np.gradient(y, s, edge_order=2)
+    return wrap_angle(np.arctan2(dy, dx))
+
+
+def prepare_centerline(
+    source: dict,
+    s_step: float,
+    closed_loop: bool,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
+    x = source['x']
+    y = source['y']
+    yaw = source['yaw']
+    curvature = source['curvature']
+    if source['s'] is not None:
+        s_values = source['s']
+    else:
+        s_values = _compute_arc_length(x, y, closed_loop)
+
+    s_values = np.asarray(s_values, dtype=float)
+    if s_values.ndim != 1:
+        s_values = s_values.reshape(-1)
+    if yaw is None:
+        yaw = _estimate_headings(x, y, s_values, closed_loop)
+    else:
+        yaw = wrap_angle(np.asarray(yaw, dtype=float))
+    yaw_unwrapped = np.unwrap(yaw)
+    if curvature is None:
+        curvature = np.zeros_like(s_values, dtype=float)
+
+    curvature = np.asarray(curvature, dtype=float)
+    if curvature.ndim != 1:
+        curvature = curvature.reshape(-1)
+
+    total_length = float(s_values[-1])
+
+    if s_step > 0.0:
+        if closed_loop:
+            target_s = np.arange(0.0, total_length, s_step, dtype=float)
         else:
-            points_ext = points
-    else:
-        points_ext = points
+            target_s = np.arange(0.0, total_length + 1e-9, s_step, dtype=float)
+        if target_s.size < 2:
+            target_s = np.linspace(0.0, total_length, 2, dtype=float)
+        x_interp = np.interp(target_s, s_values, x)
+        y_interp = np.interp(target_s, s_values, y)
+        yaw_interp = np.interp(target_s, s_values, yaw_unwrapped)
+        curvature_interp = np.interp(target_s, s_values, curvature)
+        centerline = np.stack((x_interp, y_interp), axis=1)
+        headings = wrap_angle(yaw_interp)
+        return centerline, headings, target_s, curvature_interp, total_length
 
-    deltas = np.diff(points_ext, axis=0)
-    seg_lengths = np.hypot(deltas[:, 0], deltas[:, 1])
-    cumulative = np.concatenate(([0.0], np.cumsum(seg_lengths)))
-    total_length = cumulative[-1]
-    if total_length <= 0:
-        raise ValueError('Total length of checkpoints path must be positive.')
-
-    num_samples = max(2, int(math.floor(total_length / s_step)) + 1)
-    if closed_loop:
-        s_values = np.linspace(0.0, total_length, num_samples, endpoint=False)
-    else:
-        s_values = np.linspace(0.0, total_length, num_samples, endpoint=True)
-
-    x_samples = np.interp(s_values, cumulative, points_ext[:, 0])
-    y_samples = np.interp(s_values, cumulative, points_ext[:, 1])
-    resampled = np.stack((x_samples, y_samples), axis=1)
-    return resampled, s_values, float(total_length)
+    centerline = np.stack((x, y), axis=1)
+    headings = wrap_angle(yaw_unwrapped)
+    return centerline, headings, s_values, curvature, total_length
 
 
-def compute_headings(points: np.ndarray, s_values: np.ndarray, closed_loop: bool) -> np.ndarray:
-    if closed_loop and len(points) >= 3:
-        s_step = float(np.median(np.diff(s_values)))
-        if s_step <= 0:
-            s_step = 1.0
-        dx = (np.roll(points[:, 0], -1) - np.roll(points[:, 0], 1)) / (2.0 * s_step)
-        dy = (np.roll(points[:, 1], -1) - np.roll(points[:, 1], 1)) / (2.0 * s_step)
-    else:
-        dx = np.gradient(points[:, 0], s_values, edge_order=2)
-        dy = np.gradient(points[:, 1], s_values, edge_order=2)
-    headings = np.arctan2(dy, dx)
-    return wrap_angle(headings)
+def load_wall_distance_field(
+    map_yaml: Optional[Path],
+    distance_threshold: float,
+) -> Tuple[Optional[np.ndarray], Tuple[float, float], float, dict]:
+    if map_yaml is None:
+        return None, (0.0, 0.0), 1.0, {}
+    map_yaml = map_yaml.expanduser()
+    if not map_yaml.exists():
+        return None, (0.0, 0.0), 1.0, {}
+
+    with map_yaml.open('r', encoding='utf-8') as f:
+        map_config = yaml.safe_load(f)
+
+    resolution = float(map_config.get('resolution', 0.05))
+    origin = map_config.get('origin', [-0.5, -0.5, 0.0])
+    origin_x = float(origin[0])
+    origin_y = float(origin[1])
+    occupied_thresh = float(map_config.get('occupied_thresh', 0.65))
+    negate = bool(map_config.get('negate', False))
+    image_path = map_config.get('image', '')
+    if not image_path:
+        return None, (origin_x, origin_y), resolution, {}
+    image_full_path = (map_yaml.parent / image_path).resolve()
+    if not image_full_path.exists():
+        return None, (origin_x, origin_y), resolution, {}
+
+    image = Image.open(str(image_full_path)).convert('L')
+    img_array = np.array(image, dtype=np.float32) / 255.0
+    if negate:
+        img_array = 1.0 - img_array
+
+    occupied_mask = img_array <= occupied_thresh
+    free_mask = np.logical_not(occupied_mask)
+
+    distance_field = distance_transform_edt(free_mask, sampling=resolution).astype(np.float32)
+    distance_field = np.where(occupied_mask, 0.0, distance_field)
+
+    metadata = {
+        'map_yaml': str(map_yaml),
+        'map_image': str(image_full_path),
+        'map_resolution': resolution,
+        'map_origin': [origin_x, origin_y],
+        'occupied_thresh': occupied_thresh,
+        'negate': negate,
+        'distance_threshold': float(distance_threshold),
+        'distance_field_shape': [int(distance_field.shape[0]), int(distance_field.shape[1])],
+    }
+
+    return distance_field, (origin_x, origin_y), resolution, metadata
+
+
+def sample_wall_distances(
+    node_positions: np.ndarray,
+    distance_field: Optional[np.ndarray],
+    origin: Tuple[float, float],
+    resolution: float,
+    threshold: float,
+) -> np.ndarray:
+    if distance_field is None:
+        return np.zeros(node_positions.shape[0], dtype=np.float32)
+
+    height, width = distance_field.shape
+    origin_x, origin_y = origin
+    threshold = max(0.0, float(threshold))
+    distances = np.zeros(node_positions.shape[0], dtype=np.float32)
+
+    for idx, (x, y) in enumerate(node_positions):
+        map_x = (x - origin_x) / resolution
+        map_y = (y - origin_y) / resolution
+        col = int(math.floor(map_x))
+        row_from_origin = int(math.floor(map_y))
+        if col < 0 or col >= width or row_from_origin < 0 or row_from_origin >= height:
+            distances[idx] = 0.0
+            continue
+        row = height - 1 - row_from_origin
+        if row < 0 or row >= height:
+            distances[idx] = 0.0
+            continue
+        dist = float(distance_field[row, col])
+        if dist < threshold:
+            dist = 0.0
+        distances[idx] = dist
+
+    return distances
 
 
 def build_graph(
@@ -95,11 +251,18 @@ def build_graph(
     s_values: np.ndarray,
     lateral_offsets: Sequence[float],
     heading_offsets: Sequence[float],
+    curvature: np.ndarray,
     max_lateral_step: int,
     max_heading_step: int,
     lateral_weight: float,
     heading_weight: float,
     include_reverse: bool,
+    lateral_bias_gain: float,
+    lateral_bias_limit: float,
+    distance_field: Optional[np.ndarray],
+    map_origin: Tuple[float, float],
+    map_resolution: float,
+    wall_distance_threshold: float,
     closed_loop: bool,
 ) -> GraphData:
     num_s = len(centerline)
@@ -115,7 +278,26 @@ def build_graph(
 
     base_pos = centerline[:, None, None, :]
     base_normals = normals[:, None, None, :]
-    pos_offsets = lat_offsets[None, :, None, None]
+
+    curvature = np.asarray(curvature, dtype=float)
+    if curvature.shape[0] != num_s:
+        raise ValueError('곡률 배열의 길이는 centerline 샘플 개수와 동일해야 합니다.')
+
+    bias_gain = float(lateral_bias_gain)
+    bias_limit = float(max(0.0, lateral_bias_limit))
+    base_abs_limit = float(np.max(np.abs(lat_offsets))) if lat_offsets.size else 0.0
+
+    # Curvature sign convention: positive curvature turns left (bias grid towards inner radius).
+    # Therefore subtract curvature*gain so positive curvature shifts offsets negative (left side).
+    bias_values = -curvature * bias_gain
+    if bias_limit > 0.0:
+        bias_values = np.clip(bias_values, -bias_limit, bias_limit)
+
+    biased_offsets = lat_offsets[None, :] + bias_values[:, None]
+    if base_abs_limit > 0.0:
+        biased_offsets = np.clip(biased_offsets, -base_abs_limit, base_abs_limit)
+
+    pos_offsets = biased_offsets[:, :, None, None]
     node_positions = base_pos + base_normals * pos_offsets
     node_positions = np.broadcast_to(node_positions, (num_s, num_lat, num_head, 2))
 
@@ -125,8 +307,16 @@ def build_graph(
     node_positions_flat = node_positions.reshape(-1, 2).astype(np.float32)
     node_yaws_flat = node_yaws.reshape(-1).astype(np.float32)
     node_s_flat = np.broadcast_to(s_values[:, None, None], (num_s, num_lat, num_head)).reshape(-1).astype(np.float32)
-    node_l_flat = np.broadcast_to(lat_offsets[None, :, None], (num_s, num_lat, num_head)).reshape(-1).astype(np.float32)
+    node_l_flat = np.broadcast_to(biased_offsets[:, :, None], (num_s, num_lat, num_head)).reshape(-1).astype(np.float32)
     node_h_flat = np.broadcast_to(head_offsets[None, None, :], (num_s, num_lat, num_head)).reshape(-1).astype(np.float32)
+    node_curv_flat = np.broadcast_to(curvature[:, None, None], (num_s, num_lat, num_head)).reshape(-1).astype(np.float32)
+    node_wall_dist_flat = sample_wall_distances(
+        node_positions_flat,
+        distance_field,
+        map_origin,
+        map_resolution,
+        wall_distance_threshold,
+    )
 
     s_indices = np.arange(num_s, dtype=np.int32)
     l_indices = np.arange(num_lat, dtype=np.int32)
@@ -151,7 +341,9 @@ def build_graph(
             return
         s_idx_a, lat_idx_a, head_idx_a = node_indices[a]
         s_idx_b, lat_idx_b, head_idx_b = node_indices[b]
-        lateral_delta = abs(lat_offsets[lat_idx_b] - lat_offsets[lat_idx_a])
+        lateral_delta = abs(
+            biased_offsets[s_idx_b, lat_idx_b] - biased_offsets[s_idx_a, lat_idx_a]
+        )
         heading_delta = abs(head_offsets[head_idx_b] - head_offsets[head_idx_a])
         weight = 1.0 + lateral_weight * lateral_delta + heading_weight * heading_delta
         edges_from.append(a)
@@ -192,6 +384,8 @@ def build_graph(
         node_s_values=node_s_flat,
         node_lateral_offsets=node_l_flat,
         node_heading_offsets=node_h_flat,
+        node_curvatures=node_curv_flat,
+        node_wall_distances=node_wall_dist_flat,
         node_indices=node_indices,
         edges_from=np.asarray(edges_from, dtype=np.int32),
         edges_to=np.asarray(edges_to, dtype=np.int32),
@@ -214,6 +408,8 @@ def save_graph(graph: GraphData, data_dir: Path, prefix: str, meta: dict) -> Non
         node_s_values=graph.node_s_values,
         node_lateral_offsets=graph.node_lateral_offsets,
         node_heading_offsets=graph.node_heading_offsets,
+        node_curvatures=graph.node_curvatures,
+        node_wall_distances=graph.node_wall_distances,
         node_indices=graph.node_indices,
         edges_from=graph.edges_from,
         edges_to=graph.edges_to,
@@ -242,12 +438,14 @@ def parse_args() -> argparse.Namespace:
     pkg_dir = pkg_utils_dir.parent
     data_dir = pkg_dir.parent / 'data'
 
-    parser = argparse.ArgumentParser(description='Precompute a local tube graph around checkpoints.')
+    parser = argparse.ArgumentParser(description='Precompute a local tube graph around a reference trajectory.')
     parser.add_argument(
+        '--input',
         '--checkpoints',
+        dest='input_path',
         type=Path,
-        default=data_dir / 'checkpoints.csv',
-        help='Path to checkpoints CSV (default: %(default)s)',
+        default=data_dir / 'fitted_waypoints.csv',
+        help='Path to input CSV (supports fitted_waypoints with curvature) (default: %(default)s)',
     )
     parser.add_argument(
         '--output-dir',
@@ -290,6 +488,35 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=3,
         help='Number of heading offsets per state (default: %(default)s)',
+    )
+
+    default_map_yaml = (pkg_dir.parent.parent / 'f1tenth/maps/track.yaml')
+    if not default_map_yaml.exists():
+        default_map_yaml = None
+
+    parser.add_argument(
+        '--map-yaml',
+        type=Path,
+        default=default_map_yaml,
+        help='Path to map YAML for wall distance computation (default: %(default)s)',
+    )
+    parser.add_argument(
+        '--wall-distance-threshold',
+        type=float,
+        default=0.4,
+        help='Distances below this value (m) are clamped to zero when stored (default: %(default)s)',
+    )
+    parser.add_argument(
+        '--curvature-bias-gain',
+        type=float,
+        default=3.0,
+        help='Gain to convert curvature (rad/m) into lateral offset bias (default: %(default)s)',
+    )
+    parser.add_argument(
+        '--curvature-bias-limit',
+        type=float,
+        default=0.25,
+        help='Maximum absolute lateral bias in meters applied per section (default: %(default)s)',
     )
     parser.add_argument(
         '--max-lateral-step',
@@ -346,12 +573,20 @@ def compute_heading_offsets(range_deg: float, count: int) -> np.ndarray:
 def main() -> None:
     args = parse_args()
 
-    checkpoints = load_checkpoints(args.checkpoints)
-    centerline, s_values, total_length = resample_centerline(checkpoints, args.s_step, args.closed_loop)
-    headings = compute_headings(centerline, s_values, args.closed_loop)
+    source = load_centerline_source(args.input_path)
+    centerline, headings, s_values, curvature, total_length = prepare_centerline(
+        source=source,
+        s_step=args.s_step,
+        closed_loop=args.closed_loop,
+    )
 
     lateral_offsets = compute_lateral_offsets(args.tube_width, args.lateral_count)
     heading_offsets = compute_heading_offsets(args.heading_range_deg, args.heading_count)
+
+    distance_field, map_origin, map_resolution, distance_meta = load_wall_distance_field(
+        args.map_yaml,
+        args.wall_distance_threshold,
+    )
 
     graph = build_graph(
         centerline=centerline,
@@ -359,16 +594,23 @@ def main() -> None:
         s_values=s_values,
         lateral_offsets=lateral_offsets,
         heading_offsets=heading_offsets,
+        curvature=curvature,
         max_lateral_step=max(0, args.max_lateral_step),
         max_heading_step=max(0, args.max_heading_step),
         lateral_weight=max(0.0, args.lateral_weight),
         heading_weight=max(0.0, args.heading_weight),
         include_reverse=bool(args.include_reverse),
+        lateral_bias_gain=float(args.curvature_bias_gain),
+        lateral_bias_limit=float(args.curvature_bias_limit),
+        distance_field=distance_field,
+        map_origin=map_origin,
+        map_resolution=map_resolution,
+        wall_distance_threshold=float(args.wall_distance_threshold),
         closed_loop=bool(args.closed_loop),
     )
 
     meta = {
-        'checkpoints': str(args.checkpoints),
+        'input': str(args.input_path),
         's_step': float(args.s_step),
         'tube_width': float(args.tube_width),
         'lateral_offsets': lateral_offsets.tolist(),
@@ -378,9 +620,14 @@ def main() -> None:
         'lateral_weight': float(args.lateral_weight),
         'heading_weight': float(args.heading_weight),
         'include_reverse': bool(args.include_reverse),
+        'curvature_bias_gain': float(args.curvature_bias_gain),
+        'curvature_bias_limit': float(args.curvature_bias_limit),
+        'wall_distance_threshold': float(args.wall_distance_threshold),
         'closed_loop': bool(args.closed_loop),
         'centerline_length': float(total_length),
     }
+
+    meta.update(distance_meta)
 
     save_graph(graph, args.output_dir, args.prefix, meta)
 

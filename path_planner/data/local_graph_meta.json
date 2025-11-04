@@ -1,7 +1,13 @@
 {
-  "centerline_length": 45.253611282145705,
-  "checkpoints": "/home/tomark/f1_ws/src/path_planner/data/checkpoints.csv",
+  "centerline_length": 45.2536,
   "closed_loop": true,
+  "curvature_bias_gain": 3.0,
+  "curvature_bias_limit": 0.25,
+  "distance_field_shape": [
+    298,
+    473
+  ],
+  "distance_threshold": 0.4,
   "graph_path": "local_graph.npz",
   "heading_offsets_rad": [
     -0.20943951023931956,
@@ -11,6 +17,7 @@
   "heading_weight": 0.5,
   "include_reverse": false,
   "index_path": "local_graph_index.json",
+  "input": "/home/tomark/f1_ws/src/path_planner/data/fitted_waypoints.csv",
   "lateral_offsets": [
     -0.6,
     -0.3,
@@ -19,11 +26,21 @@
     0.6
   ],
   "lateral_weight": 1.0,
+  "map_image": "/home/tomark/f1_ws/src/f1tenth/maps/track.pgm",
+  "map_origin": [
+    -10.9,
+    -7.59
+  ],
+  "map_resolution": 0.05,
+  "map_yaml": "/home/tomark/f1_ws/src/f1tenth/maps/track.yaml",
   "max_heading_step": 1,
   "max_lateral_step": 1,
   "meta_path": "local_graph_meta.json",
+  "negate": false,
   "num_edges": 20657,
   "num_nodes": 3405,
+  "occupied_thresh": 0.65,
   "s_step": 0.2,
-  "tube_width": 0.6
+  "tube_width": 0.6,
+  "wall_distance_threshold": 0.4
 }

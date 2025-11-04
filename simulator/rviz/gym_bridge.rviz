@@ -134,7 +134,7 @@ Visualization Manager:
       Enabled: true
       Name: Obstacles
       Namespaces:
-        {}
+        dynamic_obstacles: true
       Topic:
         Depth: 5
         Durability Policy: Transient Local
@@ -166,7 +166,7 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 10.500611305236816
+        Max Value: 10.412872314453125
         Min Value: -3.992281913757324
         Value: true
       Axis: X
@@ -251,11 +251,11 @@ Visualization Manager:
       Class: rviz_default_plugins/Path
       Color: 25; 255; 0
       Enabled: true
-      Head Diameter: 0.30000001192092896
-      Head Length: 0.20000000298023224
-      Length: 0.30000001192092896
+      Head Diameter: 0.10000000149011612
+      Head Length: 0.07999999821186066
+      Length: 0.029999999329447746
       Line Style: Lines
-      Line Width: 0.029999999329447746
+      Line Width: 0.009999999776482582
       Name: Local
       Offset:
         X: 0
@@ -263,9 +263,9 @@ Visualization Manager:
         Z: 0
       Pose Color: 25; 255; 0
       Pose Style: Arrows
-      Radius: 0.029999999329447746
+      Radius: 0.009999999776482582
       Shaft Diameter: 0.10000000149011612
-      Shaft Length: 0.10000000149011612
+      Shaft Length: 0.029999999329447746
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -349,7 +349,8 @@ Visualization Manager:
       Enabled: true
       Name: MarkerArray
       Namespaces:
-        {}
+        local_graph_edges: true
+        local_graph_nodes: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -403,25 +404,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 13.932665824890137
+      Distance: 6.0891432762146
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -0.03867999091744423
-        Y: -0.6057902574539185
-        Z: -0.05300024151802063
+        X: 0.4607524573802948
+        Y: -0.3067674934864044
+        Z: 2.3000097274780273
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.5397963523864746
+      Pitch: 1.2247967720031738
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 4.663186073303223
+      Yaw: 3.1131787300109863
     Saved: ~
 Window Geometry:
   Displays:

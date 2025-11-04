@@ -154,6 +154,8 @@ class HybridAStarLocalPlanner(Node):
         self.local_graph_s_values: Optional[np.ndarray] = None
         self.local_graph_lateral_offsets: Optional[np.ndarray] = None
         self.local_graph_heading_offsets: Optional[np.ndarray] = None
+        self.local_graph_curvatures: Optional[np.ndarray] = None
+        self.local_graph_wall_distances: Optional[np.ndarray] = None
         self.local_graph_edges_from: Optional[np.ndarray] = None
         self.local_graph_edges_to: Optional[np.ndarray] = None
         self.local_graph_edges_cost: Optional[np.ndarray] = None
@@ -323,6 +325,8 @@ class HybridAStarLocalPlanner(Node):
         self.local_graph_s_values = None
         self.local_graph_lateral_offsets = None
         self.local_graph_heading_offsets = None
+        self.local_graph_curvatures = None
+        self.local_graph_wall_distances = None
         self.local_graph_indices = None
         self.local_graph_edges_from = None
         self.local_graph_edges_to = None
@@ -381,6 +385,10 @@ class HybridAStarLocalPlanner(Node):
             self.local_graph_edges_from = np.array(npz_file['edges_from'], dtype=np.int32)
             self.local_graph_edges_to = np.array(npz_file['edges_to'], dtype=np.int32)
             self.local_graph_edges_cost = np.array(npz_file['edges_cost'], dtype=np.float32)
+            if 'node_curvatures' in npz_file:
+                self.local_graph_curvatures = np.array(npz_file['node_curvatures'], dtype=np.float32)
+            else:
+                self.local_graph_curvatures = np.zeros_like(self.local_graph_s_values, dtype=np.float32)
         finally:
             npz_file.close()
 

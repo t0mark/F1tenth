@@ -34,6 +34,7 @@ setup(
             'local_avoidance_node = path_planner.local_avoidance:main',
             'local_sampler_node = path_planner.local_sampler:main',
             'local_hybrid_astar_node = path_planner.local_hybrid_astar:main',
+            'local_graph = path_planner.utils.local_graph:main',
             'extract_centerline = path_planner.utils.utils:extract_centerline_cli',
             'checkpoint_recorder_node = path_planner.utils.checkpoint_recorder:main',
             'centerline_logger_node = path_planner.centerline_logger:main',
