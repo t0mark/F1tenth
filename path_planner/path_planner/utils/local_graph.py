@@ -47,8 +47,16 @@ def load_checkpoints(path: Path) -> np.ndarray:
     return data[:, :2]
 
 
-def resample_centerline(points: np.ndarray, s_step: float) -> Tuple[np.ndarray, np.ndarray]:
-    deltas = np.diff(points, axis=0)
+def resample_centerline(points: np.ndarray, s_step: float, closed_loop: bool) -> Tuple[np.ndarray, np.ndarray, float]:
+    if closed_loop:
+        if np.linalg.norm(points[0] - points[-1]) > 1e-6:
+            points_ext = np.vstack([points, points[:1]])
+        else:
+            points_ext = points
+    else:
+        points_ext = points
+
+    deltas = np.diff(points_ext, axis=0)
     seg_lengths = np.hypot(deltas[:, 0], deltas[:, 1])
     cumulative = np.concatenate(([0.0], np.cumsum(seg_lengths)))
     total_length = cumulative[-1]
@@ -56,17 +64,27 @@ def resample_centerline(points: np.ndarray, s_step: float) -> Tuple[np.ndarray, 
         raise ValueError('Total length of checkpoints path must be positive.')
 
     num_samples = max(2, int(math.floor(total_length / s_step)) + 1)
-    s_values = np.linspace(0.0, total_length, num_samples, endpoint=True)
+    if closed_loop:
+        s_values = np.linspace(0.0, total_length, num_samples, endpoint=False)
+    else:
+        s_values = np.linspace(0.0, total_length, num_samples, endpoint=True)
 
-    x_samples = np.interp(s_values, cumulative, points[:, 0])
-    y_samples = np.interp(s_values, cumulative, points[:, 1])
+    x_samples = np.interp(s_values, cumulative, points_ext[:, 0])
+    y_samples = np.interp(s_values, cumulative, points_ext[:, 1])
     resampled = np.stack((x_samples, y_samples), axis=1)
-    return resampled, s_values
+    return resampled, s_values, float(total_length)
 
 
-def compute_headings(points: np.ndarray, s_values: np.ndarray) -> np.ndarray:
-    dx = np.gradient(points[:, 0], s_values, edge_order=2)
-    dy = np.gradient(points[:, 1], s_values, edge_order=2)
+def compute_headings(points: np.ndarray, s_values: np.ndarray, closed_loop: bool) -> np.ndarray:
+    if closed_loop and len(points) >= 3:
+        s_step = float(np.median(np.diff(s_values)))
+        if s_step <= 0:
+            s_step = 1.0
+        dx = (np.roll(points[:, 0], -1) - np.roll(points[:, 0], 1)) / (2.0 * s_step)
+        dy = (np.roll(points[:, 1], -1) - np.roll(points[:, 1], 1)) / (2.0 * s_step)
+    else:
+        dx = np.gradient(points[:, 0], s_values, edge_order=2)
+        dy = np.gradient(points[:, 1], s_values, edge_order=2)
     headings = np.arctan2(dy, dx)
     return wrap_angle(headings)
 
@@ -82,6 +100,7 @@ def build_graph(
     lateral_weight: float,
     heading_weight: float,
     include_reverse: bool,
+    closed_loop: bool,
 ) -> GraphData:
     num_s = len(centerline)
     lat_offsets = np.asarray(lateral_offsets, dtype=float)
@@ -139,7 +158,11 @@ def build_graph(
         edges_to.append(b)
         edges_cost.append(dist * weight)
 
-    for s_idx in range(num_s - 1):
+    s_iter = range(num_s) if closed_loop else range(num_s - 1)
+    for s_idx in s_iter:
+        next_s_idx = (s_idx + 1) % num_s
+        if not closed_loop and next_s_idx == 0:
+            continue
         for lat_idx in range(num_lat):
             for head_idx in range(num_head):
                 src = node_id_grid[s_idx, lat_idx, head_idx]
@@ -151,7 +174,7 @@ def build_graph(
                         new_head = head_idx + d_head
                         if new_head < 0 or new_head >= num_head:
                             continue
-                        dst = node_id_grid[s_idx + 1, new_lat, new_head]
+                        dst = node_id_grid[next_s_idx, new_lat, new_head]
                         add_edge(src, dst)
                         if include_reverse:
                             add_edge(dst, src)
@@ -297,6 +320,13 @@ def parse_args() -> argparse.Namespace:
         action='store_true',
         help='Include reverse-directed edges to enable backward traversal.',
     )
+    parser.add_argument(
+        '--open-path',
+        dest='closed_loop',
+        action='store_false',
+        help='Treat the checkpoints as an open path (no wrap-around edges).',
+    )
+    parser.set_defaults(closed_loop=True)
     return parser.parse_args()
 
 
@@ -317,8 +347,8 @@ def main() -> None:
     args = parse_args()
 
     checkpoints = load_checkpoints(args.checkpoints)
-    centerline, s_values = resample_centerline(checkpoints, args.s_step)
-    headings = compute_headings(centerline, s_values)
+    centerline, s_values, total_length = resample_centerline(checkpoints, args.s_step, args.closed_loop)
+    headings = compute_headings(centerline, s_values, args.closed_loop)
 
     lateral_offsets = compute_lateral_offsets(args.tube_width, args.lateral_count)
     heading_offsets = compute_heading_offsets(args.heading_range_deg, args.heading_count)
@@ -334,6 +364,7 @@ def main() -> None:
         lateral_weight=max(0.0, args.lateral_weight),
         heading_weight=max(0.0, args.heading_weight),
         include_reverse=bool(args.include_reverse),
+        closed_loop=bool(args.closed_loop),
     )
 
     meta = {
@@ -347,7 +378,8 @@ def main() -> None:
         'lateral_weight': float(args.lateral_weight),
         'heading_weight': float(args.heading_weight),
         'include_reverse': bool(args.include_reverse),
-        'centerline_length': float(s_values[-1]),
+        'closed_loop': bool(args.closed_loop),
+        'centerline_length': float(total_length),
     }
 
     save_graph(graph, args.output_dir, args.prefix, meta)
