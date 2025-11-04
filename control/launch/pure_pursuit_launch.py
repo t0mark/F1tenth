@@ -17,7 +17,7 @@ def generate_launch_description():
 
     # Speed control parameters
     vmin_arg   = DeclareLaunchArgument('v_min', default_value='0.5')
-    vmax_arg   = DeclareLaunchArgument('v_max', default_value='0.5')
+    vmax_arg   = DeclareLaunchArgument('v_max', default_value='6.0')
     max_curvature_arg = DeclareLaunchArgument('max_curvature', default_value='0.8')
 
     # Lookahead parameters
