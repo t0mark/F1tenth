@@ -18,11 +18,13 @@ def generate_launch_description():
     # Speed control parameters
     vmin_arg   = DeclareLaunchArgument('v_min', default_value='0.5')
     vmax_arg   = DeclareLaunchArgument('v_max', default_value='6.0')
-    max_curvature_arg = DeclareLaunchArgument('max_curvature', default_value='0.8')
+    max_curvature_arg = DeclareLaunchArgument('max_curvature', default_value='1.0')
 
     # Lookahead parameters
     ld_min_arg = DeclareLaunchArgument('ld_min', default_value='0.5')
     ld_max_arg = DeclareLaunchArgument('ld_max', default_value='5.0')
+    lookahead_time_arg = DeclareLaunchArgument('lookahead_time', default_value='0.3')  # seconds
+    curvature_sensitivity_arg = DeclareLaunchArgument('curvature_sensitivity', default_value='0.7')  # 0-1
 
     # Control parameters
     ltimeout_arg = DeclareLaunchArgument('local_path_timeout', default_value='1.0')
@@ -48,6 +50,8 @@ def generate_launch_description():
             'max_curvature':         LaunchConfiguration('max_curvature'),
             'ld_min':                LaunchConfiguration('ld_min'),
             'ld_max':                LaunchConfiguration('ld_max'),
+            'lookahead_time':        LaunchConfiguration('lookahead_time'),
+            'curvature_sensitivity': LaunchConfiguration('curvature_sensitivity'),
             'local_path_timeout':    LaunchConfiguration('local_path_timeout'),
             'control_rate_hz':       LaunchConfiguration('control_rate_hz'),
             'steer_smooth_alpha':    LaunchConfiguration('steer_smooth_alpha'),
@@ -60,7 +64,7 @@ def generate_launch_description():
         wheelbase_arg, maxsteer_arg,
         path_topic_arg, fallback_topic_arg, odom_topic_arg, drive_topic_arg,
         vmin_arg, vmax_arg, max_curvature_arg,
-        ld_min_arg, ld_max_arg,
+        ld_min_arg, ld_max_arg, lookahead_time_arg, curvature_sensitivity_arg,
         ltimeout_arg, rate_arg, smooth_arg,
         curvature_exponent_arg, ref_velocity_arg,
         node

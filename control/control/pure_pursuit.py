@@ -43,6 +43,8 @@ class PurePursuitController(Node):
         self.declare_parameter('steer_smooth_alpha', 0.3)
         self.declare_parameter('curvature_exponent', 1.5)
         self.declare_parameter('ref_velocity', self.get_parameter('v_max').get_parameter_value().double_value)
+        self.declare_parameter('lookahead_time', 1.0)  # Time to look ahead (seconds)
+        self.declare_parameter('curvature_sensitivity', 0.5)  # How much curvature affects lookahead (0-1)
 
         # Get parameters
         self.wheelbase = self.get_parameter('wheelbase').value
@@ -57,6 +59,8 @@ class PurePursuitController(Node):
         self.steer_smooth_alpha = self.get_parameter('steer_smooth_alpha').value
         self.curvature_exponent = self.get_parameter('curvature_exponent').value
         self.ref_velocity = self.get_parameter('ref_velocity').value
+        self.lookahead_time = self.get_parameter('lookahead_time').value
+        self.curvature_sensitivity = self.get_parameter('curvature_sensitivity').value
 
         # State variables
         self.current_pose = None
@@ -111,6 +115,8 @@ class PurePursuitController(Node):
         self.get_logger().info('Pure Pursuit Controller initialized')
         self.get_logger().info(f'Adaptive speed: min={self.v_min} m/s, max={self.v_max} m/s')
         self.get_logger().info(f'Adaptive lookahead: min={self.ld_min} m, max={self.ld_max} m')
+        self.get_logger().info(f'Lookahead time: {self.lookahead_time} s')
+        self.get_logger().info(f'Curvature sensitivity: {self.curvature_sensitivity}')
         self.get_logger().info(f'Control rate: {self.control_rate_hz} Hz')
         self.get_logger().info(f'Steering smoothing: alpha={self.steer_smooth_alpha}')
 
@@ -168,16 +174,20 @@ class PurePursuitController(Node):
         return total_curvature / num_points
 
     def calculate_lookahead_from_curvature_and_speed(self, avg_curvature, current_speed):
-        """Calculate adaptive lookahead based on both speed and path curvature."""
-        # 1. Calculate base lookahead from current speed (linear relationship)
-        # Higher speed -> longer lookahead
-        speed_ratio = (current_speed - self.v_min) / (self.v_max - self.v_min) if self.v_max > self.v_min else 0.0
-        speed_ratio = max(0.0, min(1.0, speed_ratio))
-        base_ld = self.ld_min + speed_ratio * (self.ld_max - self.ld_min)
+        """Calculate adaptive lookahead based on both speed and path curvature.
+
+        Uses time-based lookahead: base_lookahead = speed * lookahead_time
+        This allows the vehicle to "look ahead" a constant time into the future,
+        naturally adapting to speed changes.
+        """
+        # 1. Calculate base lookahead using time-based approach
+        # lookahead = speed × time (how far the vehicle travels in lookahead_time seconds)
+        base_ld = current_speed * self.lookahead_time
 
         # 2. Apply curvature-based reduction (high curvature -> reduce lookahead)
+        # The curvature_sensitivity parameter controls how much curvature affects lookahead
         curvature_factor = min(1.0, abs(avg_curvature) / self.max_curvature)
-        curvature_reduction = pow(curvature_factor, self.curvature_exponent) * 0.5  # Reduce by up to 50%
+        curvature_reduction = pow(curvature_factor, self.curvature_exponent) * self.curvature_sensitivity
 
         # 3. Calculate final lookahead with curvature adjustment
         final_ld = base_ld * (1.0 - curvature_reduction)
@@ -343,13 +353,13 @@ class PurePursuitController(Node):
         # 1. Calculate average curvature of the path
         avg_curvature = self.calculate_average_curvature(current_path)
 
-        # 2. Calculate adaptive lookahead based on curvature and current speed
-        adaptive_lookahead = self.calculate_lookahead_from_curvature_and_speed(
-            avg_curvature, self.current_speed
-        )
+        # 2. Calculate adaptive speed based on curvature (curvature -> speed)
+        adaptive_speed = self.calculate_speed_from_curvature(avg_curvature)
 
-        # 3. Calculate adaptive speed from the new lookahead distance
-        adaptive_speed = self.calculate_speed_from_lookahead(adaptive_lookahead)
+        # 3. Calculate adaptive lookahead based on speed and curvature (speed -> lookahead)
+        adaptive_lookahead = self.calculate_lookahead_from_curvature_and_speed(
+            avg_curvature, adaptive_speed
+        )
 
         # 4. Find target point using this lookahead
         target_point, _ = self.find_target_point(adaptive_lookahead)
