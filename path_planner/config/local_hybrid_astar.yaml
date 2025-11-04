@@ -66,3 +66,12 @@ local_planner:
     global_path_deviation_weight: 8.0
     # 정적 맵 외곽 페널티, 트랙 밖으로 못 나가게 강제 (최우선)
     static_map_penalty_weight: 20.0
+
+    # Precomputed local graph visualization
+    local_graph_enabled: true
+    local_graph_prefix: 'local_graph'
+    local_graph_dir: '${WORKSPACE_ROOT}/src/path_planner/data'
+    publish_local_graph_markers: true
+    local_graph_marker_topic: '/local_graph_markers'
+    local_graph_marker_scale: 0.06
+    local_graph_edge_scale: 0.02

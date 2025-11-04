@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
-import math
+import json
 import heapq
+import math
 from dataclasses import dataclass
+from pathlib import Path as PathLib
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import rclpy
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Point
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy, QoSHistoryPolicy
 from sensor_msgs.msg import LaserScan
+from std_msgs.msg import ColorRGBA
+from visualization_msgs.msg import Marker, MarkerArray
 
 
 def wrap_angle(angle: float) -> float:
@@ -67,6 +71,13 @@ class HybridAStarLocalPlanner(Node):
         self.declare_parameter('heuristic_weight', 1.0)
         self.declare_parameter('global_path_deviation_weight', 8.0)
         self.declare_parameter('static_map_penalty_weight', 20.0)
+        self.declare_parameter('local_graph_enabled', True)
+        self.declare_parameter('local_graph_prefix', 'local_graph')
+        self.declare_parameter('local_graph_dir', '')
+        self.declare_parameter('publish_local_graph_markers', True)
+        self.declare_parameter('local_graph_marker_topic', '/local_graph_markers')
+        self.declare_parameter('local_graph_marker_scale', 0.08)
+        self.declare_parameter('local_graph_edge_scale', 0.03)
 
         # Parameter retrieval
         self.global_path_topic = self.get_parameter('global_path_topic').get_parameter_value().string_value
@@ -102,6 +113,13 @@ class HybridAStarLocalPlanner(Node):
         self.heuristic_weight = float(self.get_parameter('heuristic_weight').value)
         self.global_path_deviation_weight = float(self.get_parameter('global_path_deviation_weight').value)
         self.static_map_penalty_weight = float(self.get_parameter('static_map_penalty_weight').value)
+        self.local_graph_enabled = bool(self.get_parameter('local_graph_enabled').value)
+        self.local_graph_prefix = self.get_parameter('local_graph_prefix').get_parameter_value().string_value
+        self.local_graph_dir_param = self.get_parameter('local_graph_dir').get_parameter_value().string_value
+        self.publish_graph_markers = bool(self.get_parameter('publish_local_graph_markers').value)
+        self.local_graph_marker_topic = self.get_parameter('local_graph_marker_topic').get_parameter_value().string_value
+        self.local_graph_marker_scale = max(1e-3, float(self.get_parameter('local_graph_marker_scale').value))
+        self.local_graph_edge_scale = max(1e-3, float(self.get_parameter('local_graph_edge_scale').value))
 
         # Derived costmap sizes
         self.grid_cols = max(3, int(math.ceil(self.grid_width / self.grid_resolution)))
@@ -120,6 +138,19 @@ class HybridAStarLocalPlanner(Node):
         self.static_map_info = None
 
         self._last_warnings: Dict[str, float] = {}
+        self.local_graph_positions: Optional[np.ndarray] = None
+        self.local_graph_yaws: Optional[np.ndarray] = None
+        self.local_graph_indices: Optional[np.ndarray] = None
+        self.local_graph_s_values: Optional[np.ndarray] = None
+        self.local_graph_lateral_offsets: Optional[np.ndarray] = None
+        self.local_graph_heading_offsets: Optional[np.ndarray] = None
+        self.local_graph_edges_from: Optional[np.ndarray] = None
+        self.local_graph_edges_to: Optional[np.ndarray] = None
+        self.local_graph_edges_cost: Optional[np.ndarray] = None
+        self.local_graph_index_map: Dict[Tuple[int, int, int], int] = {}
+        self.local_graph_meta: Dict[str, object] = {}
+        self.graph_marker_pub = None
+        self._graph_markers_sent = False
 
         # ROS interfaces
         self.global_path_sub = self.create_subscription(Path, self.global_path_topic, self._on_global_path, 10)
@@ -145,6 +176,12 @@ class HybridAStarLocalPlanner(Node):
             if self.publish_costmap
             else None
         )
+        self._load_local_graph()
+        if self.publish_graph_markers and self.local_graph_positions is not None:
+            qos = QoSProfile(history=QoSHistoryPolicy.KEEP_LAST, depth=1)
+            qos.durability = QoSDurabilityPolicy.TRANSIENT_LOCAL
+            qos.reliability = QoSReliabilityPolicy.RELIABLE
+            self.graph_marker_pub = self.create_publisher(MarkerArray, self.local_graph_marker_topic, qos)
 
         timer_period = 1.0 / max(0.1, self.planner_hz)
         self.timer = self.create_timer(timer_period, self._on_timer)
@@ -213,6 +250,9 @@ class HybridAStarLocalPlanner(Node):
     # Planner loop
     # --------------------------------------------------------------------- #
     def _on_timer(self) -> None:
+        if self.publish_graph_markers and not self._graph_markers_sent:
+            self._publish_local_graph_markers()
+
         if not self._data_ready():
             return
 
@@ -257,6 +297,156 @@ class HybridAStarLocalPlanner(Node):
         if now_sec - last >= period:
             self.get_logger().warn(message)
             self._last_warnings[key] = now_sec
+
+    # --------------------------------------------------------------------- #
+    # Local graph utilities
+    # --------------------------------------------------------------------- #
+    def _load_local_graph(self) -> None:
+        if not self.local_graph_enabled:
+            return
+
+        if self.local_graph_dir_param:
+            base_dir = PathLib(self.local_graph_dir_param).expanduser()
+            if not base_dir.is_absolute():
+                base_dir = (PathLib(__file__).resolve().parent.parent / base_dir).resolve()
+        else:
+            base_dir = PathLib(__file__).resolve().parent.parent / 'data'
+        base_dir = base_dir.resolve()
+        prefix = self.local_graph_prefix
+        npz_path = base_dir / f'{prefix}.npz'
+        index_path = base_dir / f'{prefix}_index.json'
+        meta_path = base_dir / f'{prefix}_meta.json'
+
+        if not npz_path.exists():
+            self.get_logger().warn(f'로컬 그래프 파일을 찾을 수 없습니다: {npz_path}')
+            return
+
+        try:
+            npz_file = np.load(npz_path)
+        except Exception as exc:
+            self.get_logger().error(f'로컬 그래프 데이터를 불러오는 중 오류 발생: {exc}')
+            return
+
+        try:
+            required = [
+                'node_positions',
+                'node_yaws',
+                'node_s_values',
+                'node_lateral_offsets',
+                'node_heading_offsets',
+                'node_indices',
+                'edges_from',
+                'edges_to',
+                'edges_cost',
+            ]
+            missing = [key for key in required if key not in npz_file]
+            if missing:
+                self.get_logger().error(f'로컬 그래프 데이터에 누락된 키: {missing}')
+                return
+
+            self.local_graph_positions = np.array(npz_file['node_positions'], dtype=np.float32)
+            self.local_graph_yaws = np.array(npz_file['node_yaws'], dtype=np.float32)
+            self.local_graph_s_values = np.array(npz_file['node_s_values'], dtype=np.float32)
+            self.local_graph_lateral_offsets = np.array(npz_file['node_lateral_offsets'], dtype=np.float32)
+            self.local_graph_heading_offsets = np.array(npz_file['node_heading_offsets'], dtype=np.float32)
+            self.local_graph_indices = np.array(npz_file['node_indices'], dtype=np.int32)
+            self.local_graph_edges_from = np.array(npz_file['edges_from'], dtype=np.int32)
+            self.local_graph_edges_to = np.array(npz_file['edges_to'], dtype=np.int32)
+            self.local_graph_edges_cost = np.array(npz_file['edges_cost'], dtype=np.float32)
+        finally:
+            npz_file.close()
+
+        if index_path.exists():
+            try:
+                with index_path.open('r', encoding='utf-8') as f:
+                    raw_index = json.load(f)
+                parsed_index: Dict[Tuple[int, int, int], int] = {}
+                for key, node_id in raw_index.items():
+                    try:
+                        s_idx_str, lat_idx_str, head_idx_str = key.split('_')
+                        parsed_index[(int(s_idx_str), int(lat_idx_str), int(head_idx_str))] = int(node_id)
+                    except (ValueError, TypeError):
+                        continue
+                self.local_graph_index_map = parsed_index
+            except Exception as exc:
+                self.get_logger().warn(f'로컬 그래프 인덱스를 파싱하지 못했습니다: {exc}')
+                self.local_graph_index_map = {}
+        else:
+            self.local_graph_index_map = {}
+
+        if meta_path.exists():
+            try:
+                with meta_path.open('r', encoding='utf-8') as f:
+                    meta = json.load(f)
+                if isinstance(meta, dict):
+                    self.local_graph_meta = meta
+            except Exception as exc:
+                self.get_logger().warn(f'로컬 그래프 메타데이터를 읽지 못했습니다: {exc}')
+                self.local_graph_meta = {}
+        else:
+            self.local_graph_meta = {}
+
+        node_count = int(self.local_graph_positions.shape[0])
+        edge_count = int(self.local_graph_edges_from.shape[0])
+        self._graph_markers_sent = False
+        self.get_logger().info(
+            f'로컬 그래프 로드 완료 (노드 {node_count}, 엣지 {edge_count}) - {npz_path}'
+        )
+
+    def _publish_local_graph_markers(self) -> None:
+        if (
+            self.graph_marker_pub is None
+            or self.local_graph_positions is None
+            or self.local_graph_edges_from is None
+            or self.local_graph_edges_to is None
+        ):
+            return
+
+        marker_array = MarkerArray()
+        stamp = self.get_clock().now().to_msg()
+
+        node_marker = Marker()
+        node_marker.header.frame_id = self.map_frame
+        node_marker.header.stamp = stamp
+        node_marker.ns = 'local_graph_nodes'
+        node_marker.id = 0
+        node_marker.type = Marker.POINTS
+        node_marker.action = Marker.ADD
+        node_marker.pose.orientation.w = 1.0
+        node_marker.scale.x = self.local_graph_marker_scale
+        node_marker.scale.y = self.local_graph_marker_scale
+        node_marker.color = ColorRGBA(r=0.1, g=0.4, b=0.9, a=0.85)
+
+        node_points = [
+            Point(x=float(pos[0]), y=float(pos[1]), z=0.0)
+            for pos in self.local_graph_positions
+        ]
+        node_marker.points = node_points
+        marker_array.markers.append(node_marker)
+
+        edge_marker = Marker()
+        edge_marker.header.frame_id = self.map_frame
+        edge_marker.header.stamp = stamp
+        edge_marker.ns = 'local_graph_edges'
+        edge_marker.id = 1
+        edge_marker.type = Marker.LINE_LIST
+        edge_marker.action = Marker.ADD
+        edge_marker.pose.orientation.w = 1.0
+        edge_marker.scale.x = self.local_graph_edge_scale
+        edge_marker.color = ColorRGBA(r=0.2, g=0.2, b=0.2, a=0.55)
+
+        positions = self.local_graph_positions
+        edge_points: List[Point] = []
+        for src_idx, dst_idx in zip(self.local_graph_edges_from, self.local_graph_edges_to):
+            src = positions[src_idx]
+            dst = positions[dst_idx]
+            edge_points.append(Point(x=float(src[0]), y=float(src[1]), z=0.0))
+            edge_points.append(Point(x=float(dst[0]), y=float(dst[1]), z=0.0))
+        edge_marker.points = edge_points
+        marker_array.markers.append(edge_marker)
+
+        self.graph_marker_pub.publish(marker_array)
+        self._graph_markers_sent = True
 
     # --------------------------------------------------------------------- #
     # Costmap utilities

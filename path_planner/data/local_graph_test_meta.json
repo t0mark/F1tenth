@@ -1,0 +1,28 @@
+{
+  "centerline_length": 44.986784206630645,
+  "checkpoints": "/home/tomark/f1_ws/src/path_planner/data/checkpoints.csv",
+  "graph_path": "local_graph_test.npz",
+  "heading_offsets_rad": [
+    -0.20943951023931956,
+    0.0,
+    0.20943951023931956
+  ],
+  "heading_weight": 0.5,
+  "include_reverse": false,
+  "index_path": "local_graph_test_index.json",
+  "lateral_offsets": [
+    -0.6,
+    -0.3,
+    0.0,
+    0.29999999999999993,
+    0.6
+  ],
+  "lateral_weight": 1.0,
+  "max_heading_step": 1,
+  "max_lateral_step": 1,
+  "meta_path": "local_graph_test_meta.json",
+  "num_edges": 20384,
+  "num_nodes": 3375,
+  "s_step": 0.2,
+  "tube_width": 0.6
+}
