@@ -40,14 +40,11 @@ class HybridAStarLocalPlanner(Node):
         self.declare_parameter('scan_topic', '/scan')
         self.declare_parameter('odom_topic', '/odom')
         self.declare_parameter('output_topic', '/local_path')
-        self.declare_parameter('costmap_topic', '/local_costmap')
         self.declare_parameter('static_map_topic', '/map')
         self.declare_parameter('map_frame', 'map')
         self.declare_parameter('base_frame', 'base_link')
-        self.declare_parameter('publish_costmap', True)
 
         # Costmap / vehicle configuration
-        self.declare_parameter('grid_resolution', 0.25)
         self.declare_parameter('grid_width', 20.0)
         self.declare_parameter('grid_height', 20.0)
         self.declare_parameter('inflation_radius', 0.5)
@@ -91,13 +88,10 @@ class HybridAStarLocalPlanner(Node):
         self.scan_topic = self.get_parameter('scan_topic').get_parameter_value().string_value
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
         self.output_topic = self.get_parameter('output_topic').get_parameter_value().string_value
-        self.costmap_topic = self.get_parameter('costmap_topic').get_parameter_value().string_value
         self.static_map_topic = self.get_parameter('static_map_topic').get_parameter_value().string_value
         self.map_frame = self.get_parameter('map_frame').get_parameter_value().string_value
         self.base_frame = self.get_parameter('base_frame').get_parameter_value().string_value
-        self.publish_costmap = bool(self.get_parameter('publish_costmap').value)
 
-        self.grid_resolution = float(self.get_parameter('grid_resolution').value)
         self.grid_width = float(self.get_parameter('grid_width').value)
         self.grid_height = float(self.get_parameter('grid_height').value)
         self.inflation_radius = float(self.get_parameter('inflation_radius').value)
@@ -134,17 +128,11 @@ class HybridAStarLocalPlanner(Node):
         self.graph_collision_step = max(0.02, float(self.get_parameter('graph_collision_step').value))
         self.dynamic_obstacle_threshold = float(self.get_parameter('dynamic_obstacle_threshold').value)
 
-        # Derived costmap sizes
-        self.grid_cols = max(3, int(math.ceil(self.grid_width / self.grid_resolution)))
-        self.grid_rows = max(3, int(math.ceil(self.grid_height / self.grid_resolution)))
-        self.obstacle_grid = np.zeros((self.grid_rows, self.grid_cols), dtype=np.uint8)
-
         # Runtime state
         self.global_path_np: Optional[np.ndarray] = None  # shape (N, 3) for x, y, yaw
         self.latest_scan: Optional[LaserScan] = None
         self.latest_pose: Optional[Tuple[float, float, float]] = None  # x, y, yaw
         self.last_path_msg: Optional[Path] = None
-        self.costmap_origin: Tuple[float, float] = (0.0, 0.0)
 
         # Static map state
         self.static_map: Optional[np.ndarray] = None
@@ -195,7 +183,6 @@ class HybridAStarLocalPlanner(Node):
         )
 
         self.path_pub = self.create_publisher(Path, self.output_topic, 10)
-        self.costmap_pub = None
         self._load_local_graph()
         if self.publish_graph_markers:
             qos = QoSProfile(history=QoSHistoryPolicy.KEEP_LAST, depth=1)
@@ -208,7 +195,7 @@ class HybridAStarLocalPlanner(Node):
 
         self.get_logger().info(
             'Hybrid A* local planner 초기화 완료 '
-            f'(grid {self.grid_cols}x{self.grid_rows}, resolution {self.grid_resolution:.2f} m)'
+            f'(dynamic window {self.grid_width:.1f}x{self.grid_height:.1f} m)'
         )
 
     # --------------------------------------------------------------------- #
@@ -642,7 +629,7 @@ class HybridAStarLocalPlanner(Node):
         if distance < 1e-6:
             return False, 0.0
 
-        step = max(self.graph_collision_step, self.grid_resolution * 0.5)
+        step = max(self.graph_collision_step, 0.02)
         steps = max(2, int(math.ceil(distance / step)))
         max_cell_cost = 0.0
 
@@ -805,16 +792,6 @@ class HybridAStarLocalPlanner(Node):
             0.5 * math.hypot(self.grid_width, self.grid_height),
             scan.range_max
         )
-        forward_ratio = 0.8
-        local_offset_x = (forward_ratio - 0.5) * self.grid_width
-        local_offset_y = 0.0
-        world_offset_x = local_offset_x * cos_yaw - local_offset_y * sin_yaw
-        world_offset_y = local_offset_x * sin_yaw + local_offset_y * cos_yaw
-        costmap_center_x = robot_x + world_offset_x
-        costmap_center_y = robot_y + world_offset_y
-        origin_x = costmap_center_x - (self.grid_cols * self.grid_resolution) * 0.5
-        origin_y = costmap_center_y - (self.grid_rows * self.grid_resolution) * 0.5
-        self.costmap_origin = (origin_x, origin_y)
 
         inflation_radius = max(self.inflation_radius, 0.0)
         if inflation_radius <= 1e-6:
@@ -843,9 +820,6 @@ class HybridAStarLocalPlanner(Node):
                 if cost > self.local_graph_dynamic_costs[idx]:
                     self.local_graph_dynamic_costs[idx] = cost
 
-        if self.costmap_pub is not None:
-            self._publish_dynamic_costmap()
-
         return True
 
     def _dynamic_cost_at(self, x: float, y: float) -> float:
@@ -857,45 +831,6 @@ class HybridAStarLocalPlanner(Node):
         if dist > self.inflation_radius and self.inflation_radius > 1e-6:
             return 0.0
         return float(self.local_graph_dynamic_costs[idx])
-
-    def _world_to_cell(self, x: float, y: float) -> Optional[Tuple[int, int]]:
-        origin_x, origin_y = self.costmap_origin
-        col = int(math.floor((x - origin_x) / self.grid_resolution))
-        row = int(math.floor((y - origin_y) / self.grid_resolution))
-        if col < 0 or col >= self.grid_cols or row < 0 or row >= self.grid_rows:
-            return None
-        return row, col
-
-    def _publish_dynamic_costmap(self) -> None:
-        if self.costmap_pub is None or self.local_graph_tree is None or self.local_graph_dynamic_costs is None:
-            return
-        msg = OccupancyGrid()
-        msg.header.frame_id = self.map_frame
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.info.resolution = self.grid_resolution
-        msg.info.width = self.grid_cols
-        msg.info.height = self.grid_rows
-        msg.info.origin.position.x = self.costmap_origin[0]
-        msg.info.origin.position.y = self.costmap_origin[1]
-        msg.info.origin.position.z = 0.0
-        msg.info.origin.orientation.w = 1.0
-
-        data: List[int] = []
-        origin_x, origin_y = self.costmap_origin
-        for row in range(self.grid_rows):
-            y = origin_y + (row + 0.5) * self.grid_resolution
-            for col in range(self.grid_cols):
-                x = origin_x + (col + 0.5) * self.grid_resolution
-                cost = self._dynamic_cost_at(x, y)
-                if cost >= self.dynamic_obstacle_threshold:
-                    data.append(100)
-                elif cost <= 0.0:
-                    data.append(0)
-                else:
-                    data.append(int(70 * cost))
-
-        msg.data = data
-        self.costmap_pub.publish(msg)
 
     # --------------------------------------------------------------------- #
     # Static map utilities

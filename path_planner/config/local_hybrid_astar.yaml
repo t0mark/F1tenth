@@ -10,20 +10,16 @@ local_planner:
     scan_topic: '/scan'
     odom_topic: '/odom'
     output_topic: '/local_path'
-    costmap_topic: '/local_costmap'
     static_map_topic: '/map'
-    publish_costmap: true
 
     # Frames
     map_frame: 'map'
     base_frame: 'base_link'
 
-    # Costmap configuration (동적 장애물용 - LiDAR 기반)
-    # 코스트맵 해상도 (m/cell), 작을수록 정밀하지만 느림
-    grid_resolution: 0.2
-    # 코스트맵 너비 (m), 로봇 중심 기준
+    # 동적 장애물 필터용 관측 창 크기 (m)
+    # 관측 창 너비 (m), 로봇 중심 기준
     grid_width: 7.0
-    # 코스트맵 높이 (m), 로봇 중심 기준
+    # 관측 창 높이 (m), 로봇 중심 기준
     grid_height: 7.0
     # 장애물 팽창 반경 (m), 안전 마진 확보
     inflation_radius: 0.05
