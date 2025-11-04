@@ -36,7 +36,7 @@ def generate_launch_description():
     )
     local_config_arg = DeclareLaunchArgument(
         'local_config',
-        default_value='local_hybrid_astar.yaml',
+        default_value='local_sampler.yaml',
         description='로컬 플래너 설정 파일.'
     )
 

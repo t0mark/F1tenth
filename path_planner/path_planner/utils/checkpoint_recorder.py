@@ -10,7 +10,6 @@ import tty
 from typing import List, Tuple
 
 import rclpy
-from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import PoseStamped, PointStamped
 from nav_msgs.msg import Path
 from rclpy.node import Node
@@ -21,7 +20,6 @@ from tf2_ros import Buffer, TransformListener
 import numpy as np
 import pandas as pd
 from scipy.interpolate import CubicSpline
-from scipy.ndimage import gaussian_filter1d
 import matplotlib
 matplotlib.use('Agg')  # GUI 없이 이미지 저장
 import matplotlib.pyplot as plt
@@ -32,64 +30,53 @@ def _yaw_from_quaternion(qx: float, qy: float, qz: float, qw: float) -> float:
     return math.atan2(2.0 * (qw * qz + qx * qy), 1 - 2.0 * (qy * qy + qz * qz))
 
 
-def _calculate_smooth_speed_profile(kappas, max_speed=3.0, min_speed=1.0, sigma=1):
-    """곡률 기반으로 속도 계산 후 가우시안 필터로 스무딩"""
-    if len(kappas) == 0 or np.all(kappas == 0):
-        return np.full(len(kappas), max_speed)
+def _optimize_racing_line(points, target_spacing, wheel_base, max_steering_angle):
+    """
+    차량의 기구학적 특성을 고려하여 최적 레이싱 라인 생성
 
-    max_kappa = np.max(np.abs(kappas))
-    if max_kappa == 0:
-        return np.full(len(kappas), max_speed)
+    Parameters:
+    -----------
+    points : np.ndarray
+        원본 체크포인트 (x, y)
+    target_spacing : float
+        목표 포인트 간격 (m)
+    wheel_base : float
+        차축 거리 (m)
+    max_steering_angle : float
+        최대 조향각 (rad)
 
-    speeds = []
-    for kappa in kappas:
-        normalized_kappa = np.abs(kappa) / max_kappa
-        speed = max_speed - (normalized_kappa * (max_speed - min_speed))
-        speeds.append(max(min_speed, speed))
+    Returns:
+    --------
+    optimized_points : np.ndarray
+        최적화된 레이싱 라인 포인트 (x, y)
+    """
+    # 1. 폐루프 완성
+    if np.linalg.norm(points[0] - points[-1]) > 0.1:
+        points = np.vstack([points, points[0:1]])
 
-    smoothed_speeds = gaussian_filter1d(speeds, sigma=sigma)
-    return np.array(smoothed_speeds)
+    # 2. 누적 거리 계산
+    distances = np.zeros(len(points))
+    for i in range(1, len(points)):
+        distances[i] = distances[i-1] + np.linalg.norm(points[i] - points[i-1])
+    total_distance = distances[-1]
 
+    # 3. Cubic spline 생성 (폐루프)
+    cs_x = CubicSpline(distances, points[:, 0], bc_type='periodic')
+    cs_y = CubicSpline(distances, points[:, 1], bc_type='periodic')
 
-def _fit_path(points):
-    """(x, y) 점에 3차 스플라인을 맞추고, yaw, 곡률, 누적 거리, 속도를 계산"""
-    x = points[:, 0]
-    y = points[:, 1]
-    t = np.linspace(0, 1, len(x))
-    cs_x = CubicSpline(t, x, bc_type='clamped')
-    cs_y = CubicSpline(t, y, bc_type='clamped')
-    # 입력 포인트 개수 유지 (500개로 고정하지 않음)
-    t_new = np.linspace(0, 1, len(x))
-    x_new = cs_x(t_new)
-    y_new = cs_y(t_new)
+    # 4. 균등 간격으로 포인트 재배치
+    num_points = max(int(np.round(total_distance / target_spacing)), len(points))
+    uniform_distances = np.linspace(0, total_distance, num_points, endpoint=False)
 
-    dx = np.gradient(x_new)
-    dy = np.gradient(y_new)
-    yaw_new = np.arctan2(dy, dx)
+    optimized_x = cs_x(uniform_distances)
+    optimized_y = cs_y(uniform_distances)
+    optimized_points = np.column_stack((optimized_x, optimized_y))
 
-    kappa = np.zeros_like(x_new)
-    for i in range(1, len(x_new) - 1):
-        dx = x_new[i + 1] - x_new[i - 1]
-        dy = y_new[i + 1] - y_new[i - 1]
-        d2x = (x_new[i + 1] - 2 * x_new[i] + x_new[i - 1])
-        d2y = (y_new[i + 1] - 2 * y_new[i] + y_new[i - 1])
-        denominator = (dx ** 2 + dy ** 2) ** (3 / 2)
-        if denominator > 1e-6:
-            kappa[i] = (dx * d2y - dy * d2x) / denominator
-    kappa[0] = kappa[1]
-    kappa[-1] = kappa[-2]
-
-    s = np.zeros_like(x_new)
-    for i in range(1, len(x_new)):
-        s[i] = s[i - 1] + np.sqrt((x_new[i] - x_new[i - 1]) ** 2 + (y_new[i] - y_new[i - 1]) ** 2)
-
-    vx = _calculate_smooth_speed_profile(kappa)
-
-    return np.column_stack((x_new, y_new, yaw_new, s, kappa, vx))
+    return optimized_points
 
 
 class CheckpointRecorderNode(Node):
-    """Node that records checkpoints from the current TF pose and saves them to CSV."""
+    """Node that records checkpoints from RViz clicks and saves them to CSV."""
 
     def __init__(self):
         super().__init__('checkpoint_recorder_node')
@@ -102,6 +89,10 @@ class CheckpointRecorderNode(Node):
         self.declare_parameter('clicked_point_topic', '/clicked_point')
         self.declare_parameter('point_spacing', 0.25)
 
+        # Vehicle parameters for racing line optimization
+        self.declare_parameter('wheel_base', 0.33)
+        self.declare_parameter('max_steering_angle', 0.42)
+
         self.map_frame = self.get_parameter('map_frame').get_parameter_value().string_value
         output_param = self.get_parameter('output_csv_path').get_parameter_value().string_value
         if output_param:
@@ -109,15 +100,19 @@ class CheckpointRecorderNode(Node):
         else:
             # 소스 디렉토리의 path_planner/data에 저장
             # 현재 파일: path_planner/path_planner/utils/checkpoint_recorder.py
-            # 목표: path_planner/data/checkpoints.csv
+            # 목표: path_planner/data/pre_checkpoints.csv
             current_file = os.path.abspath(__file__)
             package_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
-            csv_path = os.path.join(package_root, 'data', 'checkpoints.csv')
+            csv_path = os.path.join(package_root, 'data', 'pre_checkpoints.csv')
         self.output_csv_path = os.path.expanduser(csv_path)
         self.auto_save = bool(self.get_parameter('auto_save_on_add').value)
         self.publish_topic = self.get_parameter('publish_topic').get_parameter_value().string_value
         self.clicked_topic = self.get_parameter('clicked_point_topic').get_parameter_value().string_value
         self.point_spacing = float(self.get_parameter('point_spacing').value)
+
+        # Vehicle parameters
+        self.wheel_base = float(self.get_parameter('wheel_base').value)
+        self.max_steering_angle = float(self.get_parameter('max_steering_angle').value)
 
         self._checkpoints: List[Tuple[float, float]] = []
         self._lock = threading.Lock()
@@ -138,16 +133,27 @@ class CheckpointRecorderNode(Node):
         self.path_pub = self.create_publisher(Path, self.publish_topic, qos)
         self._publish_path()
 
-        # Background keyboard listener for removing checkpoints with 'y' and generating uniform distribution with 'q'.
+        # Background keyboard listener for removing checkpoints with 'y' and generating racing line with 'q'.
         self._keyboard_thread = threading.Thread(target=self._keyboard_loop, daemon=True)
         self._keyboard_thread.start()
+
+        # 차량의 기구학적 한계 계산
+        min_turning_radius = self.wheel_base / np.tan(self.max_steering_angle)
+        max_kappa = 1.0 / min_turning_radius
 
         self.get_logger().info(
             f'Checkpoint recorder ready (map_frame={self.map_frame}, clicked_topic={self.clicked_topic}, '
             f'output="{self.output_csv_path}", point_spacing={self.point_spacing}m)'
         )
+        self.get_logger().info('=' * 60)
+        self.get_logger().info('차량 파라미터:')
+        self.get_logger().info(f'  - 차축 거리: {self.wheel_base} m')
+        self.get_logger().info(f'  - 최대 조향각: {self.max_steering_angle} rad ({np.degrees(self.max_steering_angle):.2f}°)')
+        self.get_logger().info(f'  - 최소 회전 반경: {min_turning_radius:.3f} m')
+        self.get_logger().info(f'  - 최대 곡률: {max_kappa:.3f} rad/m')
+        self.get_logger().info('=' * 60)
         self.get_logger().info(
-            '키보드 명령: [y] 마지막 체크포인트 삭제, [q] 균등 분포 생성 및 저장'
+            '키보드 명령: [y] 마지막 체크포인트 삭제, [q] 레이싱 라인 생성 및 저장'
         )
 
     def _transform_point_to_map(self, msg: PointStamped) -> Tuple[float, float]:
@@ -287,113 +293,89 @@ class CheckpointRecorderNode(Node):
         if self.auto_save:
             self._write_csv()
 
-    def _generate_uniform_distribution(self):
-        """체크포인트를 균등 분포로 재배치하고 CSV 및 시각화 저장"""
+    def _generate_racing_line(self):
+        """최적 레이싱 라인 생성 및 CSV와 시각화 저장"""
         with self._lock:
             checkpoints = list(self._checkpoints)
 
         if len(checkpoints) < 3:
-            self.get_logger().warn('균등 분포 생성을 위해 최소 3개 이상의 체크포인트가 필요합니다.')
+            self.get_logger().warn('레이싱 라인 생성을 위해 최소 3개 이상의 체크포인트가 필요합니다.')
             return
 
-        self.get_logger().info('균등 분포 포인트 생성 중...')
+        self.get_logger().info('최적 레이싱 라인 생성 중...')
 
         try:
-            # 1. 폐루프 완성
             points = np.array(checkpoints)
             original_num_points = len(points)
-            dist_start_end = np.linalg.norm(points[0] - points[-1])
 
-            if dist_start_end > 0.1:
-                points = np.vstack([points, points[0:1]])
-                self.get_logger().info(f'폐루프 완성: 시작점-끝점 연결 ({dist_start_end:.3f}m)')
+            # 최적 레이싱 라인 생성
+            optimized_points = _optimize_racing_line(
+                points,
+                target_spacing=self.point_spacing,
+                wheel_base=self.wheel_base,
+                max_steering_angle=self.max_steering_angle
+            )
 
-            # 2. 누적 거리 계산
-            distances = np.zeros(len(points))
-            for i in range(1, len(points)):
-                distances[i] = distances[i-1] + np.linalg.norm(points[i] - points[i-1])
-            total_distance = distances[-1]
-
-            # 3. Cubic spline 생성
-            cs_x = CubicSpline(distances, points[:, 0], bc_type='periodic')
-            cs_y = CubicSpline(distances, points[:, 1], bc_type='periodic')
-
-            # 4. 균등 포인트 생성
-            num_points = max(int(np.round(total_distance / self.point_spacing)), original_num_points)
-            uniform_distances = np.linspace(0, total_distance, num_points, endpoint=True)
-            uniform_points = np.array([cs_x(uniform_distances), cs_y(uniform_distances)]).T
-            uniform_points = uniform_points[:-1]  # 마지막 중복 포인트 제거
-
-            # 5. CSV 저장
+            # 출력 디렉토리 설정
             output_dir = os.path.dirname(self.output_csv_path)
             if output_dir:
                 os.makedirs(output_dir, exist_ok=True)
 
-            df = pd.DataFrame(uniform_points, columns=['x', 'y'])
-            df.to_csv(self.output_csv_path, index=False)
-            self.get_logger().info(f'✓ 균등 분포 포인트 저장: {self.output_csv_path}')
+            # checkpoints.csv 저장
+            checkpoints_path = os.path.join(output_dir, 'checkpoints.csv')
+            df = pd.DataFrame(optimized_points, columns=['x', 'y'])
+            df.to_csv(checkpoints_path, index=False)
+            self.get_logger().info(f'✓ 최적화된 레이싱 라인 저장: {checkpoints_path}')
 
-            # 6. 시각화 저장
-            png_path = self.output_csv_path.replace('.csv', '_visualization.png')
-            self._save_visualization(points, cs_x, cs_y, total_distance, original_num_points,
-                                   uniform_points, png_path)
+            # 시각화 저장
+            png_path = os.path.join(output_dir, 'checkpoints_visualization.png')
+            self._save_racing_line_visualization(points, optimized_points, png_path)
 
-            # 7. 통계 출력
+            # 통계 출력
+            total_distance = np.sum([np.linalg.norm(optimized_points[i] - optimized_points[i-1])
+                                    for i in range(1, len(optimized_points))])
             self.get_logger().info('=' * 50)
             self.get_logger().info(f'원본 포인트 수: {original_num_points}개')
-            self.get_logger().info(f'재분배된 포인트 수: {len(uniform_points)}개')
+            self.get_logger().info(f'최적화된 포인트 수: {len(optimized_points)}개')
             self.get_logger().info(f'전체 경로 길이: {total_distance:.3f}m')
-            self.get_logger().info(f'지정된 해상도: {self.point_spacing}m')
-            self.get_logger().info(f'포인트 간 실제 간격: {total_distance/len(uniform_points):.4f}m')
+            self.get_logger().info(f'포인트 간 평균 간격: {total_distance/len(optimized_points):.4f}m')
             self.get_logger().info('=' * 50)
 
-            # 8. fitted_waypoints.csv 생성
-            self._generate_fitted_waypoints(uniform_points)
-
         except Exception as exc:
-            self.get_logger().error(f'균등 분포 생성 실패: {exc}')
+            self.get_logger().error(f'레이싱 라인 생성 실패: {exc}')
 
-    def _save_visualization(self, points, cs_x, cs_y, total_distance, original_num_points,
-                           uniform_points, output_png):
-        """원본, 균등 분배(원본 수), 균등 분배(해상도 지정) 비교 시각화"""
+    def _save_racing_line_visualization(self, original_points, optimized_points, output_png):
+        """원본 포인트와 최적화된 레이싱 라인 비교 시각화"""
         try:
-            fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+            fig, axes = plt.subplots(1, 2, figsize=(16, 7))
 
             # (1) 원본 포인트 분포
-            axes[0].plot(points[:, 0], points[:, 1], 'b.-', label='원본 (불균등)', markersize=6)
-            axes[0].plot(points[0, 0], points[0, 1], 'go', markersize=10, label='시작점')
-            axes[0].set_xlabel('X')
-            axes[0].set_ylabel('Y')
-            axes[0].set_title(f'원본 포인트 분포 ({original_num_points}개)')
-            axes[0].legend()
+            axes[0].plot(original_points[:, 0], original_points[:, 1], 'b.-',
+                        label='원본 체크포인트', markersize=8, linewidth=2)
+            axes[0].plot(original_points[0, 0], original_points[0, 1], 'go',
+                        markersize=12, label='시작점', zorder=5)
+            axes[0].set_xlabel('X (m)', fontsize=12)
+            axes[0].set_ylabel('Y (m)', fontsize=12)
+            axes[0].set_title(f'원본 체크포인트 ({len(original_points)}개)', fontsize=14)
+            axes[0].legend(fontsize=10)
             axes[0].axis('equal')
             axes[0].grid(True, alpha=0.3)
 
-            # (2) 균등 분배 (원본과 동일 수)
-            uniform_original_dist = np.linspace(0, total_distance, original_num_points, endpoint=False)
-            uniform_original = np.array([cs_x(uniform_original_dist), cs_y(uniform_original_dist)]).T
-            axes[1].plot(uniform_original[:, 0], uniform_original[:, 1], 'orange', marker='.',
-                        linestyle='-', label='균등 분배 (원본 수)', markersize=6)
-            axes[1].plot(uniform_original[0, 0], uniform_original[0, 1], 'go', markersize=10, label='시작점')
-            axes[1].set_xlabel('X')
-            axes[1].set_ylabel('Y')
-            axes[1].set_title(f'균등 분배 ({original_num_points}개)')
-            axes[1].legend()
+            # (2) 최적화된 레이싱 라인
+            axes[1].plot(optimized_points[:, 0], optimized_points[:, 1], 'r.-',
+                        label='최적화된 레이싱 라인', markersize=3, linewidth=2)
+            axes[1].plot(optimized_points[0, 0], optimized_points[0, 1], 'go',
+                        markersize=12, label='시작점', zorder=5)
+            # 폐루프 표시
+            axes[1].plot([optimized_points[-1, 0], optimized_points[0, 0]],
+                        [optimized_points[-1, 1], optimized_points[0, 1]],
+                        'g--', alpha=0.5, linewidth=2, label='폐루프 연결')
+            axes[1].set_xlabel('X (m)', fontsize=12)
+            axes[1].set_ylabel('Y (m)', fontsize=12)
+            axes[1].set_title(f'최적화된 레이싱 라인 ({len(optimized_points)}개)', fontsize=14)
+            axes[1].legend(fontsize=10)
             axes[1].axis('equal')
             axes[1].grid(True, alpha=0.3)
-
-            # (3) 균등 분배 (해상도 지정)
-            axes[2].plot(uniform_points[:, 0], uniform_points[:, 1], 'r.-',
-                        label=f'균등 분배 ({self.point_spacing}m)', markersize=3)
-            axes[2].plot(uniform_points[0, 0], uniform_points[0, 1], 'go', markersize=10, label='시작점')
-            axes[2].plot([uniform_points[-1, 0], uniform_points[0, 0]],
-                        [uniform_points[-1, 1], uniform_points[0, 1]], 'g--', alpha=0.5, linewidth=2)
-            axes[2].set_xlabel('X')
-            axes[2].set_ylabel('Y')
-            axes[2].set_title(f'균등 분배 ({len(uniform_points)}개, 해상도: {self.point_spacing}m)')
-            axes[2].legend()
-            axes[2].axis('equal')
-            axes[2].grid(True, alpha=0.3)
 
             plt.tight_layout()
             plt.savefig(output_png, dpi=150, bbox_inches='tight')
@@ -401,77 +383,6 @@ class CheckpointRecorderNode(Node):
             self.get_logger().info(f'✓ 시각화 저장: {output_png}')
         except Exception as exc:
             self.get_logger().error(f'시각화 저장 실패: {exc}')
-
-    def _generate_fitted_waypoints(self, uniform_points):
-        """균등 분포 포인트로부터 fitted_waypoints.csv 생성"""
-        try:
-            self.get_logger().info('Fitted waypoints 생성 중...')
-
-            # 폐루프 완성 (첫 번째 점을 끝에 추가)
-            waypoints_closed = np.vstack([uniform_points, uniform_points[0:1]])
-
-            # 곡률, 속도 등을 포함한 fitted waypoints 생성
-            fitted_waypoints = _fit_path(waypoints_closed)
-
-            output_dir = os.path.dirname(self.output_csv_path)
-
-            # 1. fitted_waypoints.csv 저장 (쉼표 구분, checkpoints.csv와 동일 개수)
-            fitted_csv_path = os.path.join(output_dir, 'fitted_waypoints.csv')
-            header_comma = 'x_ref_m,y_ref_m,psi_racetraj_rad,s_racetraj_m,kappa_racetraj_radpm,vx_racetraj_mps'
-            np.savetxt(fitted_csv_path, fitted_waypoints, delimiter=',',
-                      header=header_comma, comments='', fmt='%.4f')
-            self.get_logger().info(f'✓ Fitted waypoints 저장: {fitted_csv_path} ({len(fitted_waypoints)}개)')
-
-            # 2. final_waypoints.csv 저장 (세미콜론 구분, 기존 노드 호환용)
-            final_csv_path = os.path.join(output_dir, 'final_waypoints.csv')
-            header_semicolon = 'x_ref_m;y_ref_m;psi_racetraj_rad;s_racetraj_m;kappa_racetraj_radpm;vx_racetraj_mps'
-            np.savetxt(final_csv_path, fitted_waypoints, delimiter=';',
-                      header=header_semicolon, comments='', fmt='%.4f')
-            self.get_logger().info(f'✓ Final waypoints 저장: {final_csv_path} ({len(fitted_waypoints)}개)')
-
-            # 3. 속도 히트맵 시각화 저장
-            heatmap_png_path = os.path.join(output_dir, 'fitted_waypoints_speed_heatmap.png')
-            self._save_speed_heatmap(fitted_waypoints, heatmap_png_path)
-
-        except Exception as exc:
-            self.get_logger().error(f'Fitted waypoints 생성 실패: {exc}')
-
-    def _save_speed_heatmap(self, fitted_waypoints, output_png):
-        """속도 히트맵 시각화 저장"""
-        try:
-            plt.figure(figsize=(10, 8))
-
-            # 속도 값 추출 (vx_racetraj_mps 컬럼)
-            speeds = fitted_waypoints[:, 5]
-            min_speed = np.min(speeds)
-            max_speed = np.max(speeds)
-
-            # 속도를 [0, 1] 범위로 정규화
-            norm_speed = (speeds - min_speed) / (max_speed - min_speed) if (max_speed - min_speed) > 0 else np.zeros_like(speeds)
-
-            # 컬러맵 생성
-            colormap = plt.get_cmap('viridis')
-
-            # 각 세그먼트를 해당 색상으로 플로팅
-            for i in range(len(fitted_waypoints) - 1):
-                plt.plot(fitted_waypoints[i:i+2, 0], fitted_waypoints[i:i+2, 1],
-                        color=colormap(norm_speed[i]), linewidth=2)
-
-            # 웨이포인트를 산점도로 표시하고 컬러바 추가
-            plt.scatter(fitted_waypoints[:, 0], fitted_waypoints[:, 1],
-                       c=speeds, cmap='viridis', s=20, zorder=2)
-            plt.colorbar(label='Speed (m/s)')
-            plt.title('Fitted Waypoints Speed Heatmap')
-            plt.xlabel('X (m)')
-            plt.ylabel('Y (m)')
-            plt.grid(True)
-            plt.axis('equal')
-
-            plt.savefig(output_png, dpi=150, bbox_inches='tight')
-            plt.close()
-            self.get_logger().info(f'✓ 속도 히트맵 저장: {output_png}')
-        except Exception as exc:
-            self.get_logger().error(f'속도 히트맵 저장 실패: {exc}')
 
     def _keyboard_loop(self):
         stream = sys.stdin if sys.stdin and sys.stdin.isatty() else None
@@ -497,7 +408,7 @@ class CheckpointRecorderNode(Node):
                 stream.close()
             return
 
-        self.get_logger().info('키보드 리스너 시작됨 - [y] 삭제, [q] 균등분포 저장')
+        self.get_logger().info('키보드 리스너 시작됨 - [y] 삭제, [q] 레이싱 라인 생성')
 
         try:
             tty.setcbreak(fd)
@@ -510,8 +421,8 @@ class CheckpointRecorderNode(Node):
                         self.get_logger().info('y 키 감지 - 마지막 체크포인트 삭제')
                         self._remove_last_checkpoint()
                     elif ch.lower() == 'q':
-                        self.get_logger().info('q 키 감지 - 균등 분포 생성 시작')
-                        self._generate_uniform_distribution()
+                        self.get_logger().info('q 키 감지 - 레이싱 라인 생성 시작')
+                        self._generate_racing_line()
         except Exception as exc:
             self.get_logger().warn(f'Keyboard listener stopped: {exc}')
         finally:

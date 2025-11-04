@@ -22,7 +22,7 @@ def generate_launch_description():
 
     # Lookahead parameters
     ld_min_arg = DeclareLaunchArgument('ld_min', default_value='0.5')
-    ld_max_arg = DeclareLaunchArgument('ld_max', default_value='1.0')
+    ld_max_arg = DeclareLaunchArgument('ld_max', default_value='5.0')
 
     # Control parameters
     ltimeout_arg = DeclareLaunchArgument('local_path_timeout', default_value='1.0')

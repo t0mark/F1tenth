@@ -36,7 +36,7 @@ class PurePursuitController(Node):
         self.declare_parameter('v_min', 1.3)
         self.declare_parameter('v_max', 5.0)
         self.declare_parameter('ld_min', 0.8)
-        self.declare_parameter('ld_max', 2.1)
+        self.declare_parameter('ld_max', 2.5)
         self.declare_parameter('max_curvature', 1.0)
         self.declare_parameter('local_path_timeout', 1.0)
         self.declare_parameter('control_rate_hz', 50.0)
@@ -168,16 +168,22 @@ class PurePursuitController(Node):
         return total_curvature / num_points
 
     def calculate_lookahead_from_curvature_and_speed(self, avg_curvature, current_speed):
-        """Calculate adaptive lookahead based on path curvature."""
-        # 1. Calculate base lookahead from curvature (inverse non-linear relationship)
+        """Calculate adaptive lookahead based on both speed and path curvature."""
+        # 1. Calculate base lookahead from current speed (linear relationship)
+        # Higher speed -> longer lookahead
+        speed_ratio = (current_speed - self.v_min) / (self.v_max - self.v_min) if self.v_max > self.v_min else 0.0
+        speed_ratio = max(0.0, min(1.0, speed_ratio))
+        base_ld = self.ld_min + speed_ratio * (self.ld_max - self.ld_min)
+
+        # 2. Apply curvature-based reduction (high curvature -> reduce lookahead)
         curvature_factor = min(1.0, abs(avg_curvature) / self.max_curvature)
-        base_ld = self.ld_max - pow(curvature_factor, self.curvature_exponent) * (self.ld_max - self.ld_min)
+        curvature_reduction = pow(curvature_factor, self.curvature_exponent) * 0.5  # Reduce by up to 50%
 
-        # 2. The lookahead is determined solely by curvature, no longer adjusted by current speed.
-        # The 'current_speed' parameter is kept for compatibility but not used for adjustment.
+        # 3. Calculate final lookahead with curvature adjustment
+        final_ld = base_ld * (1.0 - curvature_reduction)
 
-        # 3. Clamp the final lookahead distance
-        final_ld = max(self.ld_min, min(self.ld_max, base_ld))
+        # 4. Clamp the final lookahead distance
+        final_ld = max(self.ld_min, min(self.ld_max, final_ld))
         return final_ld
 
     def calculate_speed_from_lookahead(self, lookahead_distance):

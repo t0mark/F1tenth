@@ -1,149 +1,162 @@
 #!/usr/bin/env python3
 
 import numpy as np
-from numpy import linalg as LA
-import os # 파일 경로 조작을 위한 임포트
+import os
 from scipy.interpolate import CubicSpline
-from scipy.ndimage import gaussian_filter1d
-import matplotlib.pyplot as plt # 플로팅 및 PNG 저장을 위한 임포트
+import matplotlib.pyplot as plt
 
-def prune_points(points, distance_threshold=0.15):
+
+def optimize_racing_line(points, target_spacing, wheel_base, max_steering_angle):
     """
-    점 간 거리가 `distance_threshold` 이상인 점만 남기도록 정리합니다.
+    차량의 기구학적 특성을 고려하여 최적 레이싱 라인 생성
+
+    Parameters:
+    -----------
+    points : np.ndarray
+        원본 체크포인트 (x, y)
+    target_spacing : float
+        목표 포인트 간격 (m)
+    wheel_base : float
+        차축 거리 (m)
+    max_steering_angle : float
+        최대 조향각 (rad)
+
+    Returns:
+    --------
+    optimized_points : np.ndarray
+        최적화된 레이싱 라인 포인트 (x, y)
     """
-    pruned_points = [points[0]]
+    # 1. 폐루프 완성
+    if np.linalg.norm(points[0] - points[-1]) > 0.1:
+        points = np.vstack([points, points[0:1]])
+
+    # 2. 누적 거리 계산
+    distances = np.zeros(len(points))
     for i in range(1, len(points)):
-        dist = np.linalg.norm(points[i] - pruned_points[-1])
-        if dist >= distance_threshold:
-            pruned_points.append(points[i])
-    return np.array(pruned_points)
+        distances[i] = distances[i-1] + np.linalg.norm(points[i] - points[i-1])
+    total_distance = distances[-1]
 
-def calculate_smooth_speed_profile(kappas, max_speed=10.0, min_speed=1.0, sigma=3):
-    """
-    곡률 기반으로 속도 계산 후 가우시안 필터로 스무딩
-    """
-    if len(kappas) == 0 or np.all(kappas == 0):
-        return np.full(len(kappas), max_speed)
-        
-    max_kappa = np.max(np.abs(kappas))
-    
-    if max_kappa == 0:
-        return np.full(len(kappas), max_speed)
+    # 3. Cubic spline 생성 (폐루프)
+    cs_x = CubicSpline(distances, points[:, 0], bc_type='periodic')
+    cs_y = CubicSpline(distances, points[:, 1], bc_type='periodic')
 
-    speeds = []
-    for kappa in kappas:
-        normalized_kappa = np.abs(kappa) / max_kappa
-        speed = max_speed - (normalized_kappa * (max_speed - min_speed))
-        speeds.append(max(min_speed, speed))
-    
-    smoothed_speeds = gaussian_filter1d(speeds, sigma=sigma)
-    
-    return np.array(smoothed_speeds)
+    # 4. 균등 간격으로 포인트 재배치
+    num_points = max(int(np.round(total_distance / target_spacing)), len(points))
+    uniform_distances = np.linspace(0, total_distance, num_points, endpoint=False)
 
-def FitPath(points):
-    """
-    (x, y) 점에 3차 스플라인을 맞추고, yaw, 곡률, 누적 거리, 속도를 계산합니다.
-    """
-    x = points[:, 0]
-    y = points[:, 1]
-    t = np.linspace(0, 1, len(x))
-    cs_x = CubicSpline(t, x, bc_type='clamped')
-    cs_y = CubicSpline(t, y, bc_type='clamped')
-    t_new = np.linspace(0, 1, len(x))
-    x_new = cs_x(t_new)
-    y_new = cs_y(t_new)
+    optimized_x = cs_x(uniform_distances)
+    optimized_y = cs_y(uniform_distances)
+    optimized_points = np.column_stack((optimized_x, optimized_y))
 
-    dx = np.gradient(x_new)
-    dy = np.gradient(y_new)
-    yaw_new = np.arctan2(dy, dx)
+    return optimized_points
 
-    kappa = np.zeros_like(x_new)
-    for i in range(1, len(x_new) - 1):
-        dx = x_new[i + 1] - x_new[i - 1]
-        dy = y_new[i + 1] - y_new[i - 1]
-        d2x = (x_new[i + 1] - 2 * x_new[i] + x_new[i - 1])
-        d2y = (y_new[i + 1] - 2 * y_new[i] + y_new[i - 1])
-        denominator = (dx ** 2 + dy ** 2) ** (3 / 2)
-        if denominator > 1e-6:
-            kappa[i] = (dx * d2y - dy * d2x) / denominator
-    kappa[0] = kappa[1]
-    kappa[-1] = kappa[-2]
 
-    s = np.zeros_like(x_new)
-    for i in range(1, len(x_new)):
-        s[i] = s[i - 1] + np.sqrt((x_new[i] - x_new[i - 1]) ** 2 + (y_new[i] - y_new[i - 1]) ** 2)
+def visualize_racing_line(original_points, optimized_points, output_png_path):
+    """원본 포인트와 최적화된 레이싱 라인 비교 시각화"""
+    fig, axes = plt.subplots(1, 2, figsize=(16, 7))
 
-    vx = calculate_smooth_speed_profile(kappa)
+    # (1) 원본 포인트 분포
+    axes[0].plot(original_points[:, 0], original_points[:, 1], 'b.-',
+                label='원본 체크포인트', markersize=8, linewidth=2)
+    axes[0].plot(original_points[0, 0], original_points[0, 1], 'go',
+                markersize=12, label='시작점', zorder=5)
+    axes[0].set_xlabel('X (m)', fontsize=12)
+    axes[0].set_ylabel('Y (m)', fontsize=12)
+    axes[0].set_title(f'원본 체크포인트 ({len(original_points)}개)', fontsize=14)
+    axes[0].legend(fontsize=10)
+    axes[0].axis('equal')
+    axes[0].grid(True, alpha=0.3)
 
-    return np.column_stack((x_new, y_new, yaw_new, s, kappa, vx))
+    # (2) 최적화된 레이싱 라인
+    axes[1].plot(optimized_points[:, 0], optimized_points[:, 1], 'r.-',
+                label='최적화된 레이싱 라인', markersize=3, linewidth=2)
+    axes[1].plot(optimized_points[0, 0], optimized_points[0, 1], 'go',
+                markersize=12, label='시작점', zorder=5)
+    # 폐루프 표시
+    axes[1].plot([optimized_points[-1, 0], optimized_points[0, 0]],
+                [optimized_points[-1, 1], optimized_points[0, 1]],
+                'g--', alpha=0.5, linewidth=2, label='폐루프 연결')
+    axes[1].set_xlabel('X (m)', fontsize=12)
+    axes[1].set_ylabel('Y (m)', fontsize=12)
+    axes[1].set_title(f'최적화된 레이싱 라인 ({len(optimized_points)}개)', fontsize=14)
+    axes[1].legend(fontsize=10)
+    axes[1].axis('equal')
+    axes[1].grid(True, alpha=0.3)
 
-def visualize_path_to_png(waypoints, output_png_path):
-    plt.figure(figsize=(10, 8))
-    
-    # 속도 값을 색상 매핑에 사용합니다.
-    speeds = waypoints[:, 5] # vx_racetraj_mps 컬럼
-    min_speed = np.min(speeds)
-    max_speed = np.max(speeds)
-    
-    # 속도를 [0, 1] 범위로 정규화합니다.
-    norm_speed = (speeds - min_speed) / (max_speed - min_speed) if (max_speed - min_speed) > 0 else np.zeros_like(speeds)
-    
-    # 컬러맵을 생성합니다.
-    colormap = plt.get_cmap('viridis')
-    
-    # 각 세그먼트를 해당 색상으로 플로팅합니다.
-    for i in range(len(waypoints) - 1):
-        plt.plot(waypoints[i:i+2, 0], waypoints[i:i+2, 1], color=colormap(norm_speed[i]), linewidth=2)
-    
-    # 웨이포인트를 산점도로 표시하고 컬러바를 추가합니다.
-    plt.scatter(waypoints[:, 0], waypoints[:, 1], c=speeds, cmap='viridis', s=20, zorder=2)
-    plt.colorbar(label='Speed (m/s)')
-    plt.title('Fitted Waypoints Speed Heatmap')
-    plt.xlabel('X (m)')
-    plt.ylabel('Y (m)')
-    plt.grid(True)
-    plt.axis('equal') # x, y 축 스케일을 동일하게 유지
-    
-    plt.savefig(output_png_path)
-    print(f"경로 시각화가 다음 경로에 PNG 파일로 저장되었습니다: {output_png_path}")
-    plt.close() # 플롯을 닫아 메모리 해제
+    plt.tight_layout()
+    plt.savefig(output_png_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"시각화가 다음 경로에 저장되었습니다: {output_png_path}")
 
 def main():
-    # 입력 웨이포인트 파일 경로 (예: data/checkpoints.csv)
-    # 스크립트가 실행되는 위치를 기준으로 상대 경로를 사용합니다.
-    input_waypoint_file = os.path.join('src/path_planner/path_planner/data', 'checkpoints.csv')
-    
+    """
+    pre_checkpoints.csv를 읽어서 최적 레이싱 라인을 생성하고
+    checkpoints.csv와 시각화 PNG로 저장
+    """
+    # ============ 차량 파라미터 설정 ============
+    WHEEL_BASE = 0.33  # 차축 거리 (m)
+    MAX_STEERING_ANGLE = 0.42  # 최대 조향각 (rad)
+    POINT_SPACING = 0.25  # 목표 포인트 간격 (m)
+
+    # 차량의 기구학적 한계 출력
+    min_turning_radius = WHEEL_BASE / np.tan(MAX_STEERING_ANGLE)
+    max_kappa = 1.0 / min_turning_radius
+    print("=" * 60)
+    print("차량 파라미터:")
+    print(f"  - 차축 거리: {WHEEL_BASE} m")
+    print(f"  - 최대 조향각: {MAX_STEERING_ANGLE} rad ({np.degrees(MAX_STEERING_ANGLE):.2f}°)")
+    print(f"  - 최소 회전 반경: {min_turning_radius:.3f} m")
+    print(f"  - 최대 곡률: {max_kappa:.3f} rad/m")
+    print(f"  - 목표 포인트 간격: {POINT_SPACING} m")
+    print("=" * 60)
+
+    # 입력 파일 경로 (pre_checkpoints.csv)
+    input_file = os.path.join('src/path_planner/path_planner/data', 'pre_checkpoints.csv')
+
     # 파일 존재 여부 확인
-    if not os.path.exists(input_waypoint_file):
-        print(f"오류: 입력 웨이포인트 파일이 다음 경로에서 발견되지 않았습니다: {input_waypoint_file}")
-        print("스크립트를 실행하는 위치를 기준으로 'data' 폴더 안에 'checkpoints.csv' 파일이 있는지 확인하거나, 절대 경로를 제공하십시오.")
+    if not os.path.exists(input_file):
+        print(f"오류: 입력 파일이 발견되지 않았습니다: {input_file}")
+        print("먼저 checkpoint_recorder 노드를 실행하여 pre_checkpoints.csv를 생성하세요.")
         return
 
-    # 웨이포인트 로드
-    # CSV 파일은 x, y 좌표만 포함한다고 가정합니다.
-    waypoints = np.genfromtxt(input_waypoint_file, delimiter=',', skip_header=1)
-    
-    # 닫힌 루프 트랙을 위해 첫 번째 점을 배열의 끝에 추가합니다.
-    waypoints = np.append(waypoints, [waypoints[0]], axis=0)
+    # 체크포인트 로드
+    print(f"\n체크포인트 로드 중: {input_file}")
+    points = np.genfromtxt(input_file, delimiter=',', skip_header=1)
+    print(f"원본 포인트 수: {len(points)}개")
 
-    print(f"원본 웨이포인트 개수: {len(waypoints)}")
+    # 최적 레이싱 라인 생성
+    print("\n최적 레이싱 라인 생성 중...")
+    optimized_points = optimize_racing_line(
+        points,
+        target_spacing=POINT_SPACING,
+        wheel_base=WHEEL_BASE,
+        max_steering_angle=MAX_STEERING_ANGLE
+    )
 
-    # 웨이포인트에 곡선을 맞추고 속성 계산
-    fitted_waypoints = FitPath(waypoints)
+    # 출력 디렉토리 설정
+    output_dir = os.path.join('src/path_planner/path_planner/data')
+    os.makedirs(output_dir, exist_ok=True)
 
-    # 결과 CSV 파일 저장 경로 (예: src/path_planner/data/fitted_waypoints.csv)
-    output_csv_path = os.path.join('src/path_planner/path_planner/data', 'fitted_waypoints.csv')
+    # checkpoints.csv 저장
+    output_csv = os.path.join(output_dir, 'checkpoints.csv')
+    np.savetxt(output_csv, optimized_points, delimiter=',', header='x,y', comments='', fmt='%.4f')
+    print(f"\n✓ 최적화된 레이싱 라인 저장: {output_csv}")
 
-    # CSV 파일 헤더 정의
-    header = 'x_ref_m,y_ref_m,psi_racetraj_rad,s_racetraj_m,kappa_racetraj_radpm,vx_racetraj_mps'
-    
-    # CSV 파일로 저장
-    np.savetxt(output_csv_path, fitted_waypoints, delimiter=',', header=header, comments='', fmt='%.4f')
-    print(f"가공된 웨이포인트가 다음 경로에 저장되었습니다: {output_csv_path}")
+    # 시각화 저장
+    output_png = os.path.join(output_dir, 'checkpoints_visualization.png')
+    visualize_racing_line(points, optimized_points, output_png)
+    print(f"✓ 시각화 저장: {output_png}")
 
-    # 경로 시각화를 PNG 파일로 저장
-    output_png_path = os.path.join('src/path_planner/path_planner/data', 'fitted_waypoints_speed_heatmap.png')
-    visualize_path_to_png(fitted_waypoints, output_png_path)
+    # 통계 출력
+    total_distance = np.sum([np.linalg.norm(optimized_points[i] - optimized_points[i-1])
+                            for i in range(1, len(optimized_points))])
+    print("\n" + "=" * 60)
+    print(f"원본 포인트 수: {len(points)}개")
+    print(f"최적화된 포인트 수: {len(optimized_points)}개")
+    print(f"전체 경로 길이: {total_distance:.3f} m")
+    print(f"포인트 간 평균 간격: {total_distance/len(optimized_points):.4f} m")
+    print("=" * 60)
+    print("\n레이싱 라인 생성 완료!")
 
 if __name__ == '__main__':
     main()
