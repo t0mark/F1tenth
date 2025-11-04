@@ -20,11 +20,11 @@
   "index_path": "local_graph_index.json",
   "input": "/home/tomark/f1_ws/src/path_planner/data/fitted_waypoints.csv",
   "lateral_offsets": [
-    -0.6,
-    -0.3,
+    -0.7,
+    -0.35,
     0.0,
-    0.29999999999999993,
-    0.6
+    0.34999999999999987,
+    0.7
   ],
   "lateral_weight": 1.0,
   "map_image": "/home/tomark/f1_ws/src/f1tenth/maps/track.pgm",
@@ -42,6 +42,6 @@
   "num_nodes": 3405,
   "occupied_thresh": 0.65,
   "s_step": 0.2,
-  "tube_width": 0.6,
+  "tube_width": 0.7,
   "wall_distance_threshold": 0.4
 }
