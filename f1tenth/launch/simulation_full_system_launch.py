@@ -29,6 +29,17 @@ from launch_ros.substitutions import FindPackageShare
 def generate_launch_description():
     """F1TENTH 통합 자율주행 시스템 런치"""
 
+    global_config_arg = DeclareLaunchArgument(
+        'global_config',
+        default_value='global_checkpoint.yaml',
+        description='글로벌 플래너 설정 파일.'
+    )
+    local_config_arg = DeclareLaunchArgument(
+        'local_config',
+        default_value='local_hybrid_astar.yaml',
+        description='로컬 플래너 설정 파일.'
+    )
+
     # 1. Simulator Launch (시뮬레이션 환경)
     simulator_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -53,6 +64,8 @@ def generate_launch_description():
                     ])
                 ),
                 launch_arguments={
+                    'global_config': LaunchConfiguration('global_config'),
+                    'local_config': LaunchConfiguration('local_config'),
                     'is_integrated': 'true'
                 }.items()
             )
@@ -76,6 +89,8 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        global_config_arg,
+        local_config_arg,
         # Launch Sequence
         simulator_launch,
         path_sampler_launch,
