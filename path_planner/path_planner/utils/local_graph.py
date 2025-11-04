@@ -507,7 +507,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--wall-distance-threshold',
         type=float,
-        default=0.4,
+        default=0.3,
         help='Distances below this value (m) are clamped to zero when stored (default: %(default)s)',
     )
     parser.add_argument(

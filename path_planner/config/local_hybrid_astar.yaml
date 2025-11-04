@@ -30,7 +30,7 @@ local_planner:
     # 플래너 실행 주기 (Hz), 높을수록 빠른 반응이지만 CPU 부하 증가
     planner_hz: 50.0
     # Hybrid A* 최대 반복 횟수, 많을수록 복잡한 경로 찾지만 느림
-    max_iterations: 2000
+    max_iterations: 1500
 
     # Cost weights (핵심 튜닝 파라미터)
     # 우선순위: 맵 외곽 회피(20) > 동적 장애물(25) > 글로벌 경로 추종(8+3) > 조향 부드러움(3)
