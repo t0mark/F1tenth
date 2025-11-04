@@ -8,6 +8,7 @@ from nav_msgs.msg import Path
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from builtin_interfaces.msg import Time
 import csv
+from ament_index_python.packages import get_package_share_directory
 
 
 class GlobalCheckpointNode(Node):
@@ -19,12 +20,16 @@ class GlobalCheckpointNode(Node):
         self.declare_parameter('publish_topic', '/global_path')
         self.declare_parameter('initial_pose_topic', '/initialpose')
 
-        self.csv_path = self.get_parameter('checkpoint_csv_path').get_parameter_value().string_value
+        csv_filename = self.get_parameter('checkpoint_csv_path').get_parameter_value().string_value
         self.topic = self.get_parameter('publish_topic').get_parameter_value().string_value
         self.initial_pose_topic = self.get_parameter('initial_pose_topic').get_parameter_value().string_value
 
-        if not self.csv_path:
-            raise RuntimeError('checkpoint_csv_path parameter is required')
+        if not csv_filename:
+            raise RuntimeError('checkpoint_csv_path parameter (filename) is required')
+
+        # 파일 이름으로부터 전체 경로 생성
+        pkg_share = get_package_share_directory('path_planner')
+        self.csv_path = os.path.join(pkg_share, 'data', csv_filename)
 
         # CSV에서 체크포인트를 불러옵니다.
         self.waypoints_xy = self._load_checkpoints(self.csv_path)

@@ -46,19 +46,7 @@ LiDAR 기반 실시간 장애물 회피 경로 생성
 **발행**: `/local_path`
 **구독**: `/global_path`, `/scan`
 
-### 4. `local_dwa_node`
-로봇 기준 로컬 비용맵을 구성하고 DWA로 `/cmd_vel`과 로컬 경로를 동시에 생성
-
-**주요 파라미터**:
-- `costmap_size` (12m), `costmap_resolution` (0.1m)
-- `sim_time` (2.0s), `vx_samples`/`omega_samples`
-- `heading/velocity/clearance_weight`: 비용 가중치
-- `publish_cmd_vel`: true일 때만 `/cmd_vel` 발행
-
-**발행**: `/local_costmap` (`OccupancyGrid`), `/local_path`, `/cmd_vel`
-**구독**: `/global_path`, `/odom`, `/scan`
-
-### 5. `checkpoint_recorder_node`
+### 4. `checkpoint_recorder_node`
 RViz에서 클릭하여 체크포인트 기록
 
 **서비스**:
@@ -71,20 +59,14 @@ RViz에서 클릭하여 체크포인트 기록
 ## 🎯 런치 파일
 
 ```bash
-# 중심선 기반 경로 계획
-ros2 launch path_planner centerline_avoidance_launch.py
-
-# 체크포인트 기반 경로 계획
-ros2 launch path_planner checkpoint_avoidance_launch.py
-
-# 체크포인트 기록
-ros2 launch path_planner checkpoint_recorder_launch.py
-
-# 통합 런치 (설정 파일 선택 가능)
+# 통합 글로벌/로컬 플래너 (설정 파일 선택 가능)
 ros2 launch path_planner path_planner_launch.py \
   global_config:=global_centerline.yaml \
   local_config:=local_avoidance.yaml \
   is_integrated:=false
+
+# 체크포인트 기록 노드
+ros2 launch path_planner checkpoint_recorder_launch.py
 ```
 
 ## 📂 구조

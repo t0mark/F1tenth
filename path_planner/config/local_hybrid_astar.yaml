@@ -26,9 +26,9 @@ local_planner:
     # 코스트맵 높이 (m), 로봇 중심 기준
     grid_height: 7.0
     # 장애물 팽창 반경 (m), 안전 마진 확보
-    inflation_radius: 0.01
+    inflation_radius: 0.05
     # 차량 반경 (m), 충돌 체크용
-    vehicle_radius: 0.35
+    vehicle_radius: 0.4
 
     # Planner configuration
     # 방향 이산화 개수 (360°/n), 많을수록 정밀
