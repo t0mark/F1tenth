@@ -16,6 +16,7 @@ from sensor_msgs.msg import LaserScan
 from std_msgs.msg import ColorRGBA
 from visualization_msgs.msg import Marker, MarkerArray
 from scipy.spatial import cKDTree
+from ament_index_python.packages import get_package_share_directory
 
 
 def wrap_angle(angle: float) -> float:
@@ -48,17 +49,9 @@ class HybridAStarLocalPlanner(Node):
         self.declare_parameter('grid_width', 20.0)
         self.declare_parameter('grid_height', 20.0)
         self.declare_parameter('inflation_radius', 0.5)
-        self.declare_parameter('vehicle_radius', 0.35)
 
         # Planner parameters
-        self.declare_parameter('heading_bins', 72)
-        self.declare_parameter('num_steering_samples', 7)
-        self.declare_parameter('max_steering_angle', 0.4)
-        self.declare_parameter('wheelbase', 0.33)
-        self.declare_parameter('step_size', 0.3)
         self.declare_parameter('lookahead_distance', 6.0)
-        self.declare_parameter('goal_tolerance', 0.4)
-        self.declare_parameter('goal_yaw_tolerance_deg', 30.0)
         self.declare_parameter('planner_hz', 10.0)
         self.declare_parameter('max_iterations', 3000)
 
@@ -95,16 +88,8 @@ class HybridAStarLocalPlanner(Node):
         self.grid_width = float(self.get_parameter('grid_width').value)
         self.grid_height = float(self.get_parameter('grid_height').value)
         self.inflation_radius = float(self.get_parameter('inflation_radius').value)
-        self.vehicle_radius = float(self.get_parameter('vehicle_radius').value)
 
-        self.heading_bins = int(self.get_parameter('heading_bins').value)
-        self.num_steering_samples = max(3, int(self.get_parameter('num_steering_samples').value))
-        self.max_steering_angle = float(self.get_parameter('max_steering_angle').value)
-        self.wheelbase = max(1e-3, float(self.get_parameter('wheelbase').value))
-        self.step_size = float(self.get_parameter('step_size').value)
         self.lookahead_distance = float(self.get_parameter('lookahead_distance').value)
-        self.goal_tolerance = float(self.get_parameter('goal_tolerance').value)
-        self.goal_yaw_tolerance = math.radians(float(self.get_parameter('goal_yaw_tolerance_deg').value))
         self.planner_hz = float(self.get_parameter('planner_hz').value)
         self.max_iterations = int(self.get_parameter('max_iterations').value)
 
@@ -116,7 +101,7 @@ class HybridAStarLocalPlanner(Node):
         self.static_map_penalty_weight = float(self.get_parameter('static_map_penalty_weight').value)
         self.local_graph_enabled = bool(self.get_parameter('local_graph_enabled').value)
         self.local_graph_prefix = self.get_parameter('local_graph_prefix').get_parameter_value().string_value
-        self.local_graph_dir_param = self.get_parameter('local_graph_dir').get_parameter_value().string_value
+        self.local_graph_dir_param = self.get_parameter('local_graph_dir').get_parameter_value().string_value.strip()
         self.publish_graph_markers = bool(self.get_parameter('publish_local_graph_markers').value)
         self.local_graph_marker_topic = self.get_parameter('local_graph_marker_topic').get_parameter_value().string_value
         self.local_graph_marker_scale = max(1e-3, float(self.get_parameter('local_graph_marker_scale').value))
@@ -332,12 +317,18 @@ class HybridAStarLocalPlanner(Node):
         self.local_graph_meta = {}
         self.local_graph_closed_loop = False
 
+        try:
+            pkg_share_dir = PathLib(get_package_share_directory('path_planner'))
+        except Exception:
+            pkg_share_dir = PathLib(__file__).resolve().parent.parent
+        default_data_dir = (pkg_share_dir / 'data').resolve()
+
         if self.local_graph_dir_param:
             base_dir = PathLib(self.local_graph_dir_param).expanduser()
             if not base_dir.is_absolute():
-                base_dir = (PathLib(__file__).resolve().parent.parent / base_dir).resolve()
+                base_dir = (pkg_share_dir / base_dir).resolve()
         else:
-            base_dir = PathLib(__file__).resolve().parent.parent / 'data'
+            base_dir = default_data_dir
         base_dir = base_dir.resolve()
         prefix = self.local_graph_prefix
         npz_path = base_dir / f'{prefix}.npz'

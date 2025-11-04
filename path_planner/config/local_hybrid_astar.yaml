@@ -23,26 +23,10 @@ local_planner:
     grid_height: 7.0
     # 장애물 팽창 반경 (m), 안전 마진 확보
     inflation_radius: 0.05
-    # 차량 반경 (m), 충돌 체크용
-    vehicle_radius: 0.4
 
     # Planner configuration
-    # 방향 이산화 개수 (360°/n), 많을수록 정밀
-    heading_bins: 60
-    # 조향각 샘플 개수, 많을수록 부드럽지만 느림
-    num_steering_samples: 5
-    # 최대 조향각 (rad = 22.9°), 차량 한계치
-    max_steering_angle: 0.4
-    # 차축 거리 (m), 회전반경 계산용
-    wheelbase: 0.33
-    # Hybrid A* 한 스텝 거리 (m), 작을수록 조밀하지만 느림
-    step_size: 0.4
     # 목표점 거리 (m), 글로벌 경로에서 앞쪽 몇 m 지점을 목표로 삼을지
     lookahead_distance: 5.0
-    # 목표 도달 판정 거리 (m), 작을수록 정밀
-    goal_tolerance: 0.5
-    # 목표 방향 도달 판정 각도 (deg), 클수록 빨리 수렴
-    goal_yaw_tolerance_deg: 35.0
     # 플래너 실행 주기 (Hz), 높을수록 빠른 반응이지만 CPU 부하 증가
     planner_hz: 50.0
     # Hybrid A* 최대 반복 횟수, 많을수록 복잡한 경로 찾지만 느림
@@ -67,8 +51,9 @@ local_planner:
 
     # Precomputed local graph visualization
     local_graph_enabled: true
+    use_local_graph_planner: true
     local_graph_prefix: 'local_graph'
-    local_graph_dir: '${WORKSPACE_ROOT}/src/path_planner/data'
+    local_graph_dir: 'data'
     publish_local_graph_markers: true
     local_graph_marker_topic: '/local_graph_markers'
     local_graph_marker_scale: 0.06
