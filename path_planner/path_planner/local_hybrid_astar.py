@@ -73,7 +73,6 @@ class HybridAStarLocalPlanner(Node):
         self.declare_parameter('graph_match_max_distance', 1.0)
         self.declare_parameter('graph_yaw_weight', 1.5)
         self.declare_parameter('graph_goal_tolerance', 0.5)
-        self.declare_parameter('graph_collision_step', 0.1)
         self.declare_parameter('dynamic_obstacle_threshold', 0.7)
 
         # Parameter retrieval
@@ -110,7 +109,6 @@ class HybridAStarLocalPlanner(Node):
         self.graph_match_max_distance = max(0.05, float(self.get_parameter('graph_match_max_distance').value))
         self.graph_yaw_weight = max(1e-3, float(self.get_parameter('graph_yaw_weight').value))
         self.graph_goal_tolerance = max(0.05, float(self.get_parameter('graph_goal_tolerance').value))
-        self.graph_collision_step = max(0.02, float(self.get_parameter('graph_collision_step').value))
         self.dynamic_obstacle_threshold = float(self.get_parameter('dynamic_obstacle_threshold').value)
 
         # Runtime state
@@ -127,10 +125,7 @@ class HybridAStarLocalPlanner(Node):
         self._last_warnings: Dict[str, float] = {}
         self.local_graph_positions: Optional[np.ndarray] = None
         self.local_graph_yaws: Optional[np.ndarray] = None
-        self.local_graph_indices: Optional[np.ndarray] = None
-        self.local_graph_s_values: Optional[np.ndarray] = None
         self.local_graph_lateral_offsets: Optional[np.ndarray] = None
-        self.local_graph_heading_offsets: Optional[np.ndarray] = None
         self.local_graph_curvatures: Optional[np.ndarray] = None
         self.local_graph_wall_distances: Optional[np.ndarray] = None
         self.local_graph_curvature_costs: Optional[np.ndarray] = None
@@ -138,15 +133,11 @@ class HybridAStarLocalPlanner(Node):
         self.local_graph_total_costs: Optional[np.ndarray] = None
         self.local_graph_dynamic_costs: Optional[np.ndarray] = None
         self.local_graph_tree = None
-        self.curvature_cost_weight = 0.0
-        self.wall_distance_threshold = 0.0
         self.local_graph_edges_from: Optional[np.ndarray] = None
         self.local_graph_edges_to: Optional[np.ndarray] = None
         self.local_graph_edges_cost: Optional[np.ndarray] = None
         self.local_graph_neighbors: List[np.ndarray] = []
         self.local_graph_neighbor_costs: List[np.ndarray] = []
-        self.local_graph_closed_loop: bool = False
-        self.local_graph_index_map: Dict[Tuple[int, int, int], int] = {}
         self.local_graph_meta: Dict[str, object] = {}
         self.graph_marker_pub = None
 
@@ -306,23 +297,18 @@ class HybridAStarLocalPlanner(Node):
 
         self.local_graph_positions = None
         self.local_graph_yaws = None
-        self.local_graph_s_values = None
         self.local_graph_lateral_offsets = None
-        self.local_graph_heading_offsets = None
         self.local_graph_curvatures = None
         self.local_graph_wall_distances = None
         self.local_graph_curvature_costs = None
         self.local_graph_wall_costs = None
         self.local_graph_total_costs = None
-        self.local_graph_indices = None
         self.local_graph_edges_from = None
         self.local_graph_edges_to = None
         self.local_graph_edges_cost = None
         self.local_graph_neighbors = []
         self.local_graph_neighbor_costs = []
-        self.local_graph_index_map = {}
         self.local_graph_meta = {}
-        self.local_graph_closed_loop = False
 
         try:
             pkg_share_dir = PathLib(get_package_share_directory('path_planner'))
@@ -339,7 +325,6 @@ class HybridAStarLocalPlanner(Node):
         base_dir = base_dir.resolve()
         prefix = self.local_graph_prefix
         npz_path = base_dir / f'{prefix}.npz'
-        index_path = base_dir / f'{prefix}_index.json'
         meta_path = base_dir / f'{prefix}_meta.json'
 
         if not npz_path.exists():
@@ -356,10 +341,7 @@ class HybridAStarLocalPlanner(Node):
             required = [
                 'node_positions',
                 'node_yaws',
-                'node_s_values',
                 'node_lateral_offsets',
-                'node_heading_offsets',
-                'node_indices',
                 'edges_from',
                 'edges_to',
                 'edges_cost',
@@ -371,21 +353,19 @@ class HybridAStarLocalPlanner(Node):
 
             self.local_graph_positions = np.array(npz_file['node_positions'], dtype=np.float32)
             self.local_graph_yaws = np.array(npz_file['node_yaws'], dtype=np.float32)
-            self.local_graph_s_values = np.array(npz_file['node_s_values'], dtype=np.float32)
+            node_count = int(self.local_graph_positions.shape[0])
             self.local_graph_lateral_offsets = np.array(npz_file['node_lateral_offsets'], dtype=np.float32)
-            self.local_graph_heading_offsets = np.array(npz_file['node_heading_offsets'], dtype=np.float32)
-            self.local_graph_indices = np.array(npz_file['node_indices'], dtype=np.int32)
             self.local_graph_edges_from = np.array(npz_file['edges_from'], dtype=np.int32)
             self.local_graph_edges_to = np.array(npz_file['edges_to'], dtype=np.int32)
             self.local_graph_edges_cost = np.array(npz_file['edges_cost'], dtype=np.float32)
             if 'node_curvatures' in npz_file:
                 self.local_graph_curvatures = np.array(npz_file['node_curvatures'], dtype=np.float32)
             else:
-                self.local_graph_curvatures = np.zeros_like(self.local_graph_s_values, dtype=np.float32)
+                self.local_graph_curvatures = np.zeros(node_count, dtype=np.float32)
             if 'node_wall_distances' in npz_file:
                 self.local_graph_wall_distances = np.array(npz_file['node_wall_distances'], dtype=np.float32)
             else:
-                self.local_graph_wall_distances = np.zeros_like(self.local_graph_s_values, dtype=np.float32)
+                self.local_graph_wall_distances = np.zeros(node_count, dtype=np.float32)
             self.local_graph_curvature_costs = None
             self.local_graph_wall_costs = None
             self.local_graph_total_costs = None
@@ -418,24 +398,6 @@ class HybridAStarLocalPlanner(Node):
             self.local_graph_tree = None
             self.local_graph_dynamic_costs = None
 
-        if index_path.exists():
-            try:
-                with index_path.open('r', encoding='utf-8') as f:
-                    raw_index = json.load(f)
-                parsed_index: Dict[Tuple[int, int, int], int] = {}
-                for key, node_id in raw_index.items():
-                    try:
-                        s_idx_str, lat_idx_str, head_idx_str = key.split('_')
-                        parsed_index[(int(s_idx_str), int(lat_idx_str), int(head_idx_str))] = int(node_id)
-                    except (ValueError, TypeError):
-                        continue
-                self.local_graph_index_map = parsed_index
-            except Exception as exc:
-                self.get_logger().warn(f'로컬 그래프 인덱스를 파싱하지 못했습니다: {exc}')
-                self.local_graph_index_map = {}
-        else:
-            self.local_graph_index_map = {}
-
         if meta_path.exists():
             try:
                 with meta_path.open('r', encoding='utf-8') as f:
@@ -460,19 +422,17 @@ class HybridAStarLocalPlanner(Node):
                 1.0,
             ).astype(np.float32)
         else:
-            self.local_graph_wall_costs = np.zeros_like(self.local_graph_s_values, dtype=np.float32)
+            self.local_graph_wall_costs = np.zeros(node_count, dtype=np.float32)
         if self.local_graph_curvatures is not None and self.local_graph_lateral_offsets is not None:
             self.local_graph_curvature_costs = (
                 curvature_weight
                 * np.maximum(0.0, -self.local_graph_curvatures * self.local_graph_lateral_offsets)
             ).astype(np.float32)
         else:
-            self.local_graph_curvature_costs = np.zeros_like(self.local_graph_s_values, dtype=np.float32)
+            self.local_graph_curvature_costs = np.zeros(node_count, dtype=np.float32)
         self.local_graph_total_costs = (
             self.local_graph_curvature_costs + self.static_map_penalty_weight * self.local_graph_wall_costs
         )
-        self.curvature_cost_weight = curvature_weight
-        self.wall_distance_threshold = wall_threshold
 
         node_count = int(self.local_graph_positions.shape[0])
         edge_count = int(self.local_graph_edges_from.shape[0])

@@ -28,16 +28,13 @@ from scipy.ndimage import distance_transform_edt
 class GraphData:
     node_positions: np.ndarray
     node_yaws: np.ndarray
-    node_s_values: np.ndarray
     node_lateral_offsets: np.ndarray
-    node_heading_offsets: np.ndarray
     node_curvatures: np.ndarray
     node_wall_distances: np.ndarray
     node_indices: np.ndarray
     edges_from: np.ndarray
     edges_to: np.ndarray
     edges_cost: np.ndarray
-    index_map: dict
 
 
 def wrap_angle(angle: np.ndarray) -> np.ndarray:
@@ -308,9 +305,7 @@ def build_graph(
 
     node_positions_flat = node_positions.reshape(-1, 2).astype(np.float32)
     node_yaws_flat = node_yaws.reshape(-1).astype(np.float32)
-    node_s_flat = np.broadcast_to(s_values[:, None, None], (num_s, num_lat, num_head)).reshape(-1).astype(np.float32)
     node_l_flat = np.broadcast_to(biased_offsets[:, :, None], (num_s, num_lat, num_head)).reshape(-1).astype(np.float32)
-    node_h_flat = np.broadcast_to(head_offsets[None, None, :], (num_s, num_lat, num_head)).reshape(-1).astype(np.float32)
     node_curv_flat = np.broadcast_to(curvature[:, None, None], (num_s, num_lat, num_head)).reshape(-1).astype(np.float32)
     node_wall_dist_flat = sample_wall_distances(
         node_positions_flat,
@@ -375,26 +370,16 @@ def build_graph(
                         if include_reverse:
                             add_edge(dst, src)
 
-    index_map = {
-        f'{int(i)}_{int(j)}_{int(k)}': int(node_id_grid[i, j, k])
-        for i in range(num_s)
-        for j in range(num_lat)
-        for k in range(num_head)
-    }
-
     return GraphData(
         node_positions=node_positions_flat,
         node_yaws=node_yaws_flat,
-        node_s_values=node_s_flat,
         node_lateral_offsets=node_l_flat,
-        node_heading_offsets=node_h_flat,
         node_curvatures=node_curv_flat,
         node_wall_distances=node_wall_dist_flat,
         node_indices=node_indices,
         edges_from=np.asarray(edges_from, dtype=np.int32),
         edges_to=np.asarray(edges_to, dtype=np.int32),
         edges_cost=np.asarray(edges_cost, dtype=np.float32),
-        index_map=index_map,
     )
 
 
@@ -402,16 +387,13 @@ def save_graph(graph: GraphData, data_dir: Path, prefix: str, meta: dict) -> Non
     data_dir.mkdir(parents=True, exist_ok=True)
 
     graph_path = data_dir / f'{prefix}.npz'
-    index_path = data_dir / f'{prefix}_index.json'
     meta_path = data_dir / f'{prefix}_meta.json'
 
     np.savez_compressed(
         graph_path,
         node_positions=graph.node_positions,
         node_yaws=graph.node_yaws,
-        node_s_values=graph.node_s_values,
         node_lateral_offsets=graph.node_lateral_offsets,
-        node_heading_offsets=graph.node_heading_offsets,
         node_curvatures=graph.node_curvatures,
         node_wall_distances=graph.node_wall_distances,
         node_indices=graph.node_indices,
@@ -420,14 +402,10 @@ def save_graph(graph: GraphData, data_dir: Path, prefix: str, meta: dict) -> Non
         edges_cost=graph.edges_cost,
     )
 
-    with index_path.open('w', encoding='utf-8') as f:
-        json.dump(graph.index_map, f, separators=(',', ':'), sort_keys=True)
-
     meta = dict(meta)
     meta.update(
         {
             'graph_path': graph_path.name,
-            'index_path': index_path.name,
             'meta_path': meta_path.name,
             'num_nodes': int(graph.node_positions.shape[0]),
             'num_edges': int(graph.edges_from.shape[0]),
