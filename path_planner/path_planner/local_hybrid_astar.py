@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import rclpy
 from geometry_msgs.msg import PoseStamped, Point
-from nav_msgs.msg import OccupancyGrid, Odometry, Path
+from nav_msgs.msg import Odometry, Path
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy, QoSHistoryPolicy
 from sensor_msgs.msg import LaserScan
@@ -45,52 +45,46 @@ class HybridAStarLocalPlanner(Node):
         self.declare_parameter('map_frame', 'map')
         self.declare_parameter('base_frame', 'base_link')
 
-        # Costmap / vehicle configuration
-        self.declare_parameter('grid_width', 20.0)
-        self.declare_parameter('grid_height', 20.0)
-        self.declare_parameter('inflation_radius', 0.5)
+        # Vehicle configuration
+        self.declare_parameter('inflation_radius', 0.25)
 
         # Planner parameters
-        self.declare_parameter('lookahead_distance', 6.0)
-        self.declare_parameter('planner_hz', 10.0)
-        self.declare_parameter('max_iterations', 3000)
+        self.declare_parameter('lookahead_distance', 5.0)
+        self.declare_parameter('planner_hz', 50.0)
+        self.declare_parameter('max_iterations', 1500)
 
         # Cost weights
         self.declare_parameter('steering_change_weight', 3.0)
         self.declare_parameter('obstacle_cost_weight', 25.0)
         self.declare_parameter('path_distance_weight', 3.0)
         self.declare_parameter('heuristic_weight', 1.0)
-        self.declare_parameter('global_path_deviation_weight', 8.0)
-        self.declare_parameter('static_map_penalty_weight', 20.0)
+        self.declare_parameter('curvature_heuristic_weight', 15.0)
+        self.declare_parameter('wall_distance_heuristic_weight', 10.0)
+        self.declare_parameter('dynamic_obstacle_threshold', 0.7)
+        self.declare_parameter('diamond_propagation_radius', 3)
+
+        # Graph parameters
         self.declare_parameter('local_graph_enabled', True)
         self.declare_parameter('local_graph_prefix', 'local_graph')
         self.declare_parameter('local_graph_dir', '')
         self.declare_parameter('publish_local_graph_markers', True)
         self.declare_parameter('local_graph_marker_topic', '/local_graph_markers')
-        self.declare_parameter('local_graph_marker_scale', 0.08)
-        self.declare_parameter('local_graph_edge_scale', 0.03)
+        self.declare_parameter('local_graph_marker_scale', 0.06)
+        self.declare_parameter('local_graph_edge_scale', 0.02)
         self.declare_parameter('use_local_graph_planner', True)
         self.declare_parameter('graph_match_max_distance', 1.0)
         self.declare_parameter('graph_yaw_weight', 1.5)
         self.declare_parameter('graph_goal_tolerance', 0.5)
-        self.declare_parameter('dynamic_obstacle_threshold', 0.7)
-        self.declare_parameter('dynamic_cost_neighbor_count', 12)
-        self.declare_parameter('dynamic_cost_forward_extra', 6)
-        self.declare_parameter('dynamic_cost_forward_yaw_tol', 0.78539816339)  # 45 deg
 
         # Parameter retrieval
         self.global_path_topic = self.get_parameter('global_path_topic').get_parameter_value().string_value
         self.scan_topic = self.get_parameter('scan_topic').get_parameter_value().string_value
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
         self.output_topic = self.get_parameter('output_topic').get_parameter_value().string_value
-        self.static_map_topic = self.get_parameter('static_map_topic').get_parameter_value().string_value
         self.map_frame = self.get_parameter('map_frame').get_parameter_value().string_value
         self.base_frame = self.get_parameter('base_frame').get_parameter_value().string_value
 
-        self.grid_width = float(self.get_parameter('grid_width').value)
-        self.grid_height = float(self.get_parameter('grid_height').value)
         self.inflation_radius = float(self.get_parameter('inflation_radius').value)
-
         self.lookahead_distance = float(self.get_parameter('lookahead_distance').value)
         self.planner_hz = float(self.get_parameter('planner_hz').value)
         self.max_iterations = int(self.get_parameter('max_iterations').value)
@@ -99,8 +93,11 @@ class HybridAStarLocalPlanner(Node):
         self.obstacle_cost_weight = float(self.get_parameter('obstacle_cost_weight').value)
         self.path_distance_weight = float(self.get_parameter('path_distance_weight').value)
         self.heuristic_weight = float(self.get_parameter('heuristic_weight').value)
-        self.global_path_deviation_weight = float(self.get_parameter('global_path_deviation_weight').value)
-        self.static_map_penalty_weight = float(self.get_parameter('static_map_penalty_weight').value)
+        self.curvature_heuristic_weight = float(self.get_parameter('curvature_heuristic_weight').value)
+        self.wall_distance_heuristic_weight = float(self.get_parameter('wall_distance_heuristic_weight').value)
+        self.dynamic_obstacle_threshold = float(self.get_parameter('dynamic_obstacle_threshold').value)
+        self.diamond_propagation_radius = max(1, int(self.get_parameter('diamond_propagation_radius').value))
+
         self.local_graph_enabled = bool(self.get_parameter('local_graph_enabled').value)
         self.local_graph_prefix = self.get_parameter('local_graph_prefix').get_parameter_value().string_value
         self.local_graph_dir_param = self.get_parameter('local_graph_dir').get_parameter_value().string_value.strip()
@@ -112,10 +109,6 @@ class HybridAStarLocalPlanner(Node):
         self.graph_match_max_distance = max(0.05, float(self.get_parameter('graph_match_max_distance').value))
         self.graph_yaw_weight = max(1e-3, float(self.get_parameter('graph_yaw_weight').value))
         self.graph_goal_tolerance = max(0.05, float(self.get_parameter('graph_goal_tolerance').value))
-        self.dynamic_obstacle_threshold = float(self.get_parameter('dynamic_obstacle_threshold').value)
-        self.dynamic_cost_neighbor_count = max(1, int(self.get_parameter('dynamic_cost_neighbor_count').value))
-        self.dynamic_cost_forward_extra = max(0, int(self.get_parameter('dynamic_cost_forward_extra').value))
-        self.dynamic_cost_forward_yaw_tol = max(1e-3, float(self.get_parameter('dynamic_cost_forward_yaw_tol').value))
 
         # Runtime state
         self.global_path_np: Optional[np.ndarray] = None  # shape (N, 3) for x, y, yaw
@@ -124,19 +117,12 @@ class HybridAStarLocalPlanner(Node):
         self.latest_pose: Optional[Tuple[float, float, float]] = None  # x, y, yaw
         self.last_path_msg: Optional[Path] = None
 
-        # Static map state
-        self.static_map: Optional[np.ndarray] = None
-        self.static_map_info = None
-
         self._last_warnings: Dict[str, float] = {}
         self.local_graph_positions: Optional[np.ndarray] = None
         self.local_graph_yaws: Optional[np.ndarray] = None
         self.local_graph_lateral_offsets: Optional[np.ndarray] = None
         self.local_graph_curvatures: Optional[np.ndarray] = None
         self.local_graph_wall_distances: Optional[np.ndarray] = None
-        self.local_graph_curvature_costs: Optional[np.ndarray] = None
-        self.local_graph_wall_costs: Optional[np.ndarray] = None
-        self.local_graph_total_costs: Optional[np.ndarray] = None
         self.local_graph_dynamic_costs: Optional[np.ndarray] = None
         self.local_graph_tree = None
         self.local_graph_edges_from: Optional[np.ndarray] = None
@@ -144,6 +130,7 @@ class HybridAStarLocalPlanner(Node):
         self.local_graph_edges_cost: Optional[np.ndarray] = None
         self.local_graph_neighbors: List[np.ndarray] = []
         self.local_graph_neighbor_costs: List[np.ndarray] = []
+        self.local_graph_indices: Optional[np.ndarray] = None  # (s_idx, lat_idx, head_idx) per node
         self.local_graph_meta: Dict[str, object] = {}
         self.graph_marker_pub = None
 
@@ -151,19 +138,6 @@ class HybridAStarLocalPlanner(Node):
         self.global_path_sub = self.create_subscription(Path, self.global_path_topic, self._on_global_path, 10)
         self.scan_sub = self.create_subscription(LaserScan, self.scan_topic, self._on_scan, 10)
         self.odom_sub = self.create_subscription(Odometry, self.odom_topic, self._on_odom, 10)
-
-        # Static map subscription with TRANSIENT_LOCAL QoS
-        self.static_map_sub = self.create_subscription(
-            OccupancyGrid,
-            self.static_map_topic,
-            self._on_static_map,
-            QoSProfile(
-                durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
-                reliability=QoSReliabilityPolicy.RELIABLE,
-                history=QoSHistoryPolicy.KEEP_LAST,
-                depth=1
-            )
-        )
 
         self.path_pub = self.create_publisher(Path, self.output_topic, 10)
         self._load_local_graph()
@@ -180,7 +154,7 @@ class HybridAStarLocalPlanner(Node):
 
         self.get_logger().info(
             'Hybrid A* local planner 초기화 완료 '
-            f'(dynamic window {self.grid_width:.1f}x{self.grid_height:.1f} m)'
+            f'(diamond propagation radius: {self.diamond_propagation_radius})'
         )
 
     # --------------------------------------------------------------------- #
@@ -229,21 +203,6 @@ class HybridAStarLocalPlanner(Node):
         cosy_cosp = 1.0 - 2.0 * (ori.y * ori.y + ori.z * ori.z)
         yaw = math.atan2(siny_cosp, cosy_cosp)
         self.latest_pose = (pos.x, pos.y, yaw)
-
-    def _on_static_map(self, msg: OccupancyGrid) -> None:
-        """정적 맵을 numpy array로 변환하여 저장"""
-        width = msg.info.width
-        height = msg.info.height
-
-        # OccupancyGrid (-1=unknown, 0=free, 100=occupied) → numpy
-        data = np.array(msg.data, dtype=np.int8).reshape((height, width))
-        self.static_map = data
-        self.static_map_info = msg.info
-
-        self.get_logger().info(
-            f'정적 맵 로드 완료: {width}x{height}, '
-            f'해상도 {msg.info.resolution:.3f}m'
-        )
 
     # --------------------------------------------------------------------- #
     # Planner loop
@@ -306,14 +265,12 @@ class HybridAStarLocalPlanner(Node):
         self.local_graph_lateral_offsets = None
         self.local_graph_curvatures = None
         self.local_graph_wall_distances = None
-        self.local_graph_curvature_costs = None
-        self.local_graph_wall_costs = None
-        self.local_graph_total_costs = None
         self.local_graph_edges_from = None
         self.local_graph_edges_to = None
         self.local_graph_edges_cost = None
         self.local_graph_neighbors = []
         self.local_graph_neighbor_costs = []
+        self.local_graph_indices = None
         self.local_graph_meta = {}
 
         try:
@@ -364,17 +321,21 @@ class HybridAStarLocalPlanner(Node):
             self.local_graph_edges_from = np.array(npz_file['edges_from'], dtype=np.int32)
             self.local_graph_edges_to = np.array(npz_file['edges_to'], dtype=np.int32)
             self.local_graph_edges_cost = np.array(npz_file['edges_cost'], dtype=np.float32)
+
             if 'node_curvatures' in npz_file:
                 self.local_graph_curvatures = np.array(npz_file['node_curvatures'], dtype=np.float32)
             else:
                 self.local_graph_curvatures = np.zeros(node_count, dtype=np.float32)
+
             if 'node_wall_distances' in npz_file:
                 self.local_graph_wall_distances = np.array(npz_file['node_wall_distances'], dtype=np.float32)
             else:
                 self.local_graph_wall_distances = np.zeros(node_count, dtype=np.float32)
-            self.local_graph_curvature_costs = None
-            self.local_graph_wall_costs = None
-            self.local_graph_total_costs = None
+
+            if 'node_indices' in npz_file:
+                self.local_graph_indices = np.array(npz_file['node_indices'], dtype=np.int32)
+            else:
+                self.local_graph_indices = None
         finally:
             npz_file.close()
 
@@ -418,27 +379,6 @@ class HybridAStarLocalPlanner(Node):
         else:
             self.local_graph_meta = {}
             self.local_graph_closed_loop = False
-
-        wall_threshold = float(self.local_graph_meta.get('wall_distance_threshold', 0.0))
-        curvature_weight = float(self.local_graph_meta.get('curvature_cost_weight', 0.0))
-        if wall_threshold > 1e-6 and self.local_graph_wall_distances is not None:
-            self.local_graph_wall_costs = np.clip(
-                (wall_threshold - self.local_graph_wall_distances) / wall_threshold,
-                0.0,
-                1.0,
-            ).astype(np.float32)
-        else:
-            self.local_graph_wall_costs = np.zeros(node_count, dtype=np.float32)
-        if self.local_graph_curvatures is not None and self.local_graph_lateral_offsets is not None:
-            self.local_graph_curvature_costs = (
-                curvature_weight
-                * np.maximum(0.0, -self.local_graph_curvatures * self.local_graph_lateral_offsets)
-            ).astype(np.float32)
-        else:
-            self.local_graph_curvature_costs = np.zeros(node_count, dtype=np.float32)
-        self.local_graph_total_costs = (
-            self.local_graph_curvature_costs + self.static_map_penalty_weight * self.local_graph_wall_costs
-        )
 
         node_count = int(self.local_graph_positions.shape[0])
         edge_count = int(self.local_graph_edges_from.shape[0])
@@ -540,26 +480,49 @@ class HybridAStarLocalPlanner(Node):
 
 
     def _graph_heuristic(self, node_id: int, goal_pos: np.ndarray, goal_yaw: float) -> float:
+        """
+        새로운 휴리스틱:
+        - 목표까지의 거리
+        - 벽까지의 유클리드 거리 (가까울수록 페널티)
+        - 곡률 기반 속도 지향 (바깥쪽 낮은 휴리스틱, 안쪽 높은 휴리스틱)
+        """
         if self.local_graph_positions is None or self.local_graph_yaws is None:
             return 0.0
 
         node_pos = self.local_graph_positions[node_id]
+
+        # 목표까지의 거리
         distance = math.hypot(float(node_pos[0] - goal_pos[0]), float(node_pos[1] - goal_pos[1]))
-        yaw_error = abs(wrap_angle(float(self.local_graph_yaws[node_id]) - goal_yaw))
-        path_deviation = self._get_path_deviation(float(node_pos[0]), float(node_pos[1]))
-        map_penalty = self._get_map_based_penalty(float(node_pos[0]), float(node_pos[1]))
-        extra_cost = 0.0
-        if self.local_graph_curvature_costs is not None:
-            extra_cost += float(self.local_graph_curvature_costs[node_id])
-        if self.local_graph_wall_costs is not None:
-            extra_cost += self.static_map_penalty_weight * float(self.local_graph_wall_costs[node_id])
+
+        # 벽까지의 거리 (가까울수록 페널티)
+        wall_distance = 0.0
+        if self.local_graph_wall_distances is not None:
+            wall_dist = float(self.local_graph_wall_distances[node_id])
+            # 벽에 가까울수록 큰 페널티 (역수 관계)
+            if wall_dist > 1e-3:
+                wall_distance = 1.0 / wall_dist
+            else:
+                wall_distance = 1000.0
+
+        # 곡률 기반 휴리스틱: 바깥쪽 선호, 안쪽 페널티
+        curvature_heuristic = 0.0
+        if self.local_graph_curvatures is not None and self.local_graph_lateral_offsets is not None:
+            curvature = float(self.local_graph_curvatures[node_id])
+            lateral_offset = float(self.local_graph_lateral_offsets[node_id])
+            # curvature > 0: 좌회전 (왼쪽이 안쪽, 오른쪽이 바깥쪽)
+            # lateral_offset > 0: 오른쪽
+            # 안쪽에 높은 페널티 (curvature * lateral_offset < 0이면 안쪽)
+            if curvature * lateral_offset < 0:
+                # 안쪽 - 높은 페널티
+                curvature_heuristic = abs(curvature * lateral_offset) * 3.0
+            else:
+                # 바깥쪽 - 낮은 페널티 (보너스)
+                curvature_heuristic = -abs(curvature * lateral_offset) * 0.5
 
         return (
             self.heuristic_weight * distance
-            + 0.3 * yaw_error
-            + self.global_path_deviation_weight * path_deviation
-            + self.static_map_penalty_weight * map_penalty
-            + extra_cost
+            + self.wall_distance_heuristic_weight * wall_distance
+            + self.curvature_heuristic_weight * curvature_heuristic
         )
 
     def _graph_reconstruct_path(self, goal_node: int, came_from: Dict[int, Optional[int]]) -> List[int]:
@@ -632,7 +595,7 @@ class HybridAStarLocalPlanner(Node):
             for neigh_id, base_cost in zip(neighbor_ids, neighbor_costs):
                 edges_checked += 1
 
-                # 목적지 노드의 동적 장애물 비용 체크 (엣지 샘플링 제거)
+                # 목적지 노드의 동적 장애물 비용 체크
                 if self.local_graph_dynamic_costs is not None:
                     node_obstacle_cost = float(self.local_graph_dynamic_costs[int(neigh_id)])
                     if node_obstacle_cost >= self.dynamic_obstacle_threshold:
@@ -640,21 +603,22 @@ class HybridAStarLocalPlanner(Node):
                 else:
                     node_obstacle_cost = 0.0
 
-                neighbour_pos = self.local_graph_positions[int(neigh_id)]
+                # 조향 변화 페널티
                 yaw_penalty = self.steering_change_weight * abs(
                     wrap_angle(float(self.local_graph_yaws[int(neigh_id)]) - float(self.local_graph_yaws[current_id]))
                 )
+
+                # 글로벌 경로 이탈 페널티
+                neighbour_pos = self.local_graph_positions[int(neigh_id)]
                 path_penalty = self.path_distance_weight * self._get_path_deviation(
                     float(neighbour_pos[0]),
                     float(neighbour_pos[1])
                 )
-                map_penalty = self.static_map_penalty_weight * self._get_map_based_penalty(
-                    float(neighbour_pos[0]),
-                    float(neighbour_pos[1])
-                )
+
+                # 동적 장애물 페널티
                 obstacle_penalty = self.obstacle_cost_weight * node_obstacle_cost
 
-                tentative_g = current_g + float(base_cost) + yaw_penalty + path_penalty + map_penalty + obstacle_penalty
+                tentative_g = current_g + float(base_cost) + yaw_penalty + path_penalty + obstacle_penalty
 
                 if tentative_g >= g_scores.get(int(neigh_id), float('inf')) - 1e-6:
                     continue
@@ -670,14 +634,18 @@ class HybridAStarLocalPlanner(Node):
         return None
 
     # --------------------------------------------------------------------- #
-    # Costmap utilities
+    # Dynamic cost utilities (Diamond propagation)
     # --------------------------------------------------------------------- #
     def _update_dynamic_costs(self) -> bool:
+        """
+        LiDAR 포인트를 그래프에 투영하고 마름모 모양으로 코스트 전파
+        """
         if (
             self.latest_pose is None
             or self.latest_scan is None
             or self.local_graph_tree is None
             or self.local_graph_dynamic_costs is None
+            or self.local_graph_indices is None
         ):
             return False
 
@@ -687,16 +655,9 @@ class HybridAStarLocalPlanner(Node):
 
         cos_yaw = math.cos(robot_yaw)
         sin_yaw = math.sin(robot_yaw)
-        max_range = min(
-            0.5 * math.hypot(self.grid_width, self.grid_height),
-            scan.range_max
-        )
+        max_range = scan.range_max
 
-        inflation_radius = max(self.inflation_radius, 0.0)
-        if inflation_radius <= 1e-6:
-            inflation_radius = 0.01
-
-        # LiDAR 빔 좌표 변환 및 배치 처리
+        # LiDAR 빔 좌표 변환
         obstacle_points = []
         angle = scan.angle_min
         for rng in scan.ranges:
@@ -713,116 +674,58 @@ class HybridAStarLocalPlanner(Node):
         if not obstacle_points:
             return True
 
-        # 배치 KNN 쿼리 (벡터화)
+        # 각 LiDAR 포인트를 그래프에 투영
         obstacle_array = np.array(obstacle_points, dtype=np.float32)
-        graph_positions = self.local_graph_positions
-        dynamic_costs = self.local_graph_dynamic_costs
-        if dynamic_costs is None or graph_positions is None:
-            return False
+        distances, indices = self.local_graph_tree.query(obstacle_array, k=1)
 
-        node_count = graph_positions.shape[0]
-        k_query = min(
-            node_count,
-            self.dynamic_cost_neighbor_count + self.dynamic_cost_forward_extra
-        )
-        if k_query <= 0:
-            return True
+        # 투영된 노드들로부터 마름모 전파
+        projected_nodes = set(int(idx) for idx in indices if np.isfinite(distances[np.where(indices == idx)[0][0]]))
 
-        robot_node_idx = self._graph_match_pose(
-            robot_x,
-            robot_y,
-            robot_yaw,
-            max_distance=self.graph_match_max_distance * 2.0
-        )
-
-        distances, indices = self.local_graph_tree.query(obstacle_array, k=k_query)
-        if k_query == 1:
-            distances = distances[:, np.newaxis]
-            indices = indices[:, np.newaxis]
-
-        base_count = min(self.dynamic_cost_neighbor_count, k_query)
-
-        node_yaws = self.local_graph_yaws if self.local_graph_yaws is not None else None
-
-        # 각 장애물 포인트에 대해 선택된 k개의 이웃 노드 업데이트
-        for obs_dists, obs_indices in zip(distances, indices):
-            if obs_indices.size == 0:
-                continue
-            valid_mask = np.isfinite(obs_dists)
-            if not np.any(valid_mask):
-                continue
-            obs_dists = obs_dists[valid_mask]
-            obs_indices = obs_indices[valid_mask].astype(np.int32, copy=False)
-            within = obs_dists <= inflation_radius
-            if not np.any(within):
-                continue
-            within_indices = np.nonzero(within)[0]
-
-            selected_idx = obs_indices[within_indices[:base_count]]
-            selected_dist = obs_dists[within_indices[:base_count]]
-
-            # Forward-direction bonus selection
-            if robot_node_idx is not None and node_yaws is not None and within_indices.size > base_count:
-                extra_candidates = within_indices[base_count:]
-                if extra_candidates.size > 0:
-                    candidate_indices = obs_indices[extra_candidates]
-                    forward_mask = (
-                        (candidate_indices > robot_node_idx)
-                        & (np.abs(wrap_angle(node_yaws[candidate_indices] - robot_yaw)) <= self.dynamic_cost_forward_yaw_tol)
-                    )
-                    if np.any(forward_mask):
-                        selected_idx = np.concatenate((selected_idx, candidate_indices[forward_mask]))
-                        selected_dist = np.concatenate((selected_dist, obs_dists[extra_candidates[forward_mask]]))
-
-            if selected_idx.size == 0:
-                continue
-
-            costs = np.maximum(0.0, (inflation_radius - selected_dist) / inflation_radius)
-            np.maximum.at(dynamic_costs, selected_idx, costs)
+        # 마름모 전파 (맨해튼 거리 기반)
+        self._propagate_diamond_cost(projected_nodes)
 
         return True
 
-    def _dynamic_cost_at(self, x: float, y: float) -> float:
-        if self.local_graph_tree is None or self.local_graph_dynamic_costs is None:
-            return 0.0
-        dist, idx = self.local_graph_tree.query((x, y), k=1)
-        if not np.isfinite(dist):
-            return 0.0
-        if dist > self.inflation_radius and self.inflation_radius > 1e-6:
-            return 0.0
-        return float(self.local_graph_dynamic_costs[idx])
+    def _propagate_diamond_cost(self, seed_nodes: set) -> None:
+        """
+        시드 노드들로부터 마름모 모양으로 코스트 전파
+        맨해튼 거리 기반으로 diamond_propagation_radius 이내의 노드에 전파
+        """
+        if self.local_graph_indices is None or self.local_graph_dynamic_costs is None:
+            return
 
-    # --------------------------------------------------------------------- #
-    # Static map utilities
-    # --------------------------------------------------------------------- #
-    def _get_map_based_penalty(self, x: float, y: float) -> float:
-        """정적 맵 기반 페널티 계산"""
-        if self.static_map is None or self.static_map_info is None:
-            return 0.0
+        # 각 노드의 (s_idx, lat_idx, head_idx) 정보 추출
+        node_count = len(self.local_graph_indices)
 
-        # World 좌표 → 맵 좌표 변환
-        map_x = int((x - self.static_map_info.origin.position.x) / self.static_map_info.resolution)
-        map_y = int((y - self.static_map_info.origin.position.y) / self.static_map_info.resolution)
+        # 시드 노드에서 시작하여 BFS로 마름모 영역 탐색
+        visited = set()
+        for seed_node in seed_nodes:
+            if seed_node >= node_count:
+                continue
 
-        height, width = self.static_map.shape
+            seed_s, seed_lat, seed_head = self.local_graph_indices[seed_node]
 
-        # 맵 밖이면 매우 큰 페널티
-        if map_x < 0 or map_x >= width or map_y < 0 or map_y >= height:
-            return 10.0
+            # 마름모 영역 내의 모든 노드에 코스트 전파
+            for node_id in range(node_count):
+                if node_id in visited:
+                    continue
 
-        cell_value = self.static_map[map_y, map_x]
+                node_s, node_lat, node_head = self.local_graph_indices[node_id]
 
-        # OccupancyGrid 값에 따른 페널티
-        if cell_value >= 80:  # Occupied (거의 확실한 장애물)
-            return 10.0
-        elif cell_value >= 50:  # Probably occupied
-            return 5.0
-        elif cell_value >= 20:  # Low confidence
-            return 1.0
-        elif cell_value == -1:  # Unknown
-            return 2.0
-        else:  # Free (0~20)
-            return 0.0
+                # 맨해튼 거리 계산 (s, lat 인덱스 기준)
+                manhattan_dist = abs(node_s - seed_s) + abs(node_lat - seed_lat)
+
+                if manhattan_dist <= self.diamond_propagation_radius:
+                    # 거리에 따라 코스트 감쇠
+                    cost = max(0.0, 1.0 - float(manhattan_dist) / float(self.diamond_propagation_radius + 1))
+                    self.local_graph_dynamic_costs[node_id] = max(
+                        self.local_graph_dynamic_costs[node_id],
+                        cost
+                    )
+                    visited.add(node_id)
+
+        return
+
 
     def _get_path_deviation(self, x: float, y: float) -> float:
         """글로벌 경로로부터의 거리 계산 (KDTree 기반 O(log N) 쿼리)"""

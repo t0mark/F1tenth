@@ -215,12 +215,15 @@ def sample_wall_distances(
     resolution: float,
     threshold: float,
 ) -> np.ndarray:
+    """
+    각 노드 위치에서 벽까지의 유클리드 거리를 샘플링
+    threshold 파라미터는 호환성을 위해 유지하지만, 거리 값을 그대로 반환
+    """
     if distance_field is None:
         return np.zeros(node_positions.shape[0], dtype=np.float32)
 
     height, width = distance_field.shape
     origin_x, origin_y = origin
-    threshold = max(0.0, float(threshold))
     distances = np.zeros(node_positions.shape[0], dtype=np.float32)
 
     for idx, (x, y) in enumerate(node_positions):
@@ -235,9 +238,8 @@ def sample_wall_distances(
         if row < 0 or row >= height:
             distances[idx] = 0.0
             continue
+        # 유클리드 거리를 그대로 저장 (threshold 적용 안 함)
         dist = float(distance_field[row, col])
-        if dist < threshold:
-            dist = 0.0
         distances[idx] = dist
 
     return distances
@@ -636,8 +638,6 @@ def main() -> None:
             csv_path = (Path.cwd() / csv_path).resolve()
 
     csv_path.parent.mkdir(parents=True, exist_ok=True)
-    wall_thresh = float(meta.get('wall_distance_threshold', 0.0))
-    curvature_weight = float(meta.get('curvature_cost_weight', 0.0))
 
     with csv_path.open('w', newline='', encoding='utf-8') as csv_file:
         writer = csv.writer(csv_file)
@@ -649,9 +649,8 @@ def main() -> None:
             'y',
             'wall_distance',
             'curvature',
-            'wall_cost',
-            'curvature_cost',
-            'total_cost',
+            'lateral_offset',
+            'curvature_heuristic',
         ])
         for (s_idx, lat_idx, head_idx), pos, wall_dist, curv, lat_off in zip(
             graph.node_indices,
@@ -660,12 +659,14 @@ def main() -> None:
             graph.node_curvatures,
             graph.node_lateral_offsets,
         ):
-            if wall_thresh > 1e-6:
-                wall_cost = max(0.0, min(1.0, (wall_thresh - wall_dist) / wall_thresh))
+            # 새로운 곡률 기반 휴리스틱 계산
+            # 안쪽(curvature * lateral_offset < 0): 높은 페널티
+            # 바깥쪽(curvature * lateral_offset >= 0): 보너스
+            if curv * lat_off < 0:
+                curvature_heuristic = abs(curv * lat_off) * 3.0
             else:
-                wall_cost = 0.0
-            curvature_cost = curvature_weight * max(0.0, curv * lat_off)
-            total_cost = wall_cost + curvature_cost
+                curvature_heuristic = -abs(curv * lat_off) * 0.5
+
             writer.writerow([
                 int(s_idx),
                 int(lat_idx),
@@ -674,9 +675,8 @@ def main() -> None:
                 f'{float(pos[1]):.6f}',
                 f'{float(wall_dist):.6f}',
                 f'{float(curv):.6f}',
-                f'{float(wall_cost):.6f}',
-                f'{float(curvature_cost):.6f}',
-                f'{float(total_cost):.6f}',
+                f'{float(lat_off):.6f}',
+                f'{float(curvature_heuristic):.6f}',
             ])
 
     print(

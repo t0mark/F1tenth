@@ -8,7 +8,7 @@
     298,
     473
   ],
-  "distance_threshold": 0.3,
+  "distance_threshold": 0.0,
   "graph_path": "local_graph.npz",
   "heading_offsets_rad": [
     -0.20943951023931956,
@@ -46,5 +46,5 @@
   "occupied_thresh": 0.65,
   "s_step": 0.8,
   "tube_width": 0.8,
-  "wall_distance_threshold": 0.3
+  "wall_distance_threshold": 0.0
 }

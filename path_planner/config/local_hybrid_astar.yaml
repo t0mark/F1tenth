@@ -1,4 +1,4 @@
-# Hybrid A* Local Planner configuration (Map-based Enhanced)
+# Hybrid A* Local Planner configuration (Refactored)
 
 local_planner:
   ros__parameters:
@@ -10,52 +10,43 @@ local_planner:
     scan_topic: '/scan'
     odom_topic: '/odom'
     output_topic: '/local_path'
-    static_map_topic: '/map'
 
     # Frames
     map_frame: 'map'
     base_frame: 'base_link'
 
-    # 동적 장애물 필터용 관측 창 크기 (m)
-    # 관측 창 너비 (m), 로봇 중심 기준
-    grid_width: 7.0
-    # 관측 창 높이 (m), 로봇 중심 기준
-    grid_height: 7.0
-    # 장애물 팽창 반경 (m), 차량 반경 + 그래프 간격 커버
+    # 장애물 팽창 반경 (m) - LiDAR 투영 시 마름모 크기 결정
     inflation_radius: 0.25
 
     # Planner configuration
     # 목표점 거리 (m), 글로벌 경로에서 앞쪽 몇 m 지점을 목표로 삼을지
     lookahead_distance: 5.0
-    # 플래너 실행 주기 (Hz), 높을수록 빠른 반응이지만 CPU 부하 증가
+    # 플래너 실행 주기 (Hz)
     planner_hz: 50.0
-    # Hybrid A* 최대 반복 횟수, 많을수록 복잡한 경로 찾지만 느림
+    # A* 최대 반복 횟수
     max_iterations: 1500
 
-    # Cost weights (핵심 튜닝 파라미터)
-    # 우선순위: 맵 외곽 회피(20) > 동적 장애물(25) > 글로벌 경로 추종(8+3) > 조향 부드러움(3)
-    # 조향 변화 페널티, 급격한 핸들 조작 방지 (부드러운 주행)
-    steering_change_weight: 3.0
-    # 동적 장애물 페널티 (LiDAR), 장애물 강력 회피
-    obstacle_cost_weight: 25.0
-    # 글로벌 경로 이탈 페널티 (g-cost), 경로 추종 강도
-    path_distance_weight: 3.0
-    # 목표점 거리 가중치, A* 탐색 방향 결정
-    heuristic_weight: 1.0
-    # 글로벌 경로 이탈 페널티 (휴리스틱), 경로 주변만 탐색하도록 유도
-    global_path_deviation_weight: 8.0
-    # 정적 맵 외곽 페널티, 트랙 밖으로 못 나가게 강제 (최우선)
-    static_map_penalty_weight: 20.0
-    # 동적 장애물 감지 임계값 (그래프 기반), 0~1 범위
-    dynamic_obstacle_threshold: 0.7
-    # LiDAR 코스트를 전파할 주변 그래프 노드 수
-    dynamic_cost_neighbor_count: 8
-    # 전방(인덱스 증가 & 동일 방향) 우선 추가 노드 수
-    dynamic_cost_forward_extra: 3
-    # 전방 보너스 판단 기준 (rad)
-    dynamic_cost_forward_yaw_tol: 0.78539816339
+    # Cost weights
+    # 우선순위: 동적 장애물(LiDAR) >> 곡률/벽 >> 경로 추종 > 조향 부드러움
 
-    # Precomputed local graph visualization
+    # 조향 변화 페널티 (부드러운 주행)
+    steering_change_weight: 2.0
+    # 동적 장애물 페널티 (LiDAR 기반) - 최우선!
+    obstacle_cost_weight: 50.0
+    # 글로벌 경로 이탈 페널티
+    path_distance_weight: 2.0
+    # 목표점 거리 가중치
+    heuristic_weight: 1.0
+    # 곡률 기반 휴리스틱 가중치 (바깥쪽 선호, 안쪽 페널티)
+    curvature_heuristic_weight: 12.0
+    # 벽 거리 기반 휴리스틱 가중치 (낮게 설정 - 조금 박아도 됨)
+    wall_distance_heuristic_weight: 3.0
+    # 동적 장애물 감지 임계값 (낮추면 더 민감하게 회피)
+    dynamic_obstacle_threshold: 0.5
+    # LiDAR 코스트 마름모 전파 크기 (맨해튼 거리, 크게 설정)
+    diamond_propagation_radius: 4
+
+    # Precomputed local graph
     local_graph_enabled: true
     use_local_graph_planner: true
     local_graph_prefix: 'local_graph'
