@@ -513,7 +513,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--curvature-cost-weight',
         type=float,
-        default=1.0,
+        default=5.0,
         help='Weight applied to abs(curvature) when computing curvature-based cost (default: %(default)s)',
     )
     parser.add_argument(

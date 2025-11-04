@@ -3,7 +3,7 @@
   "closed_loop": true,
   "curvature_bias_gain": 0.0,
   "curvature_bias_limit": 0.25,
-  "curvature_cost_weight": 4.0,
+  "curvature_cost_weight": 2.0,
   "distance_field_shape": [
     298,
     473
