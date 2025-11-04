@@ -174,6 +174,8 @@ class HybridAStarLocalPlanner(Node):
             qos.durability = QoSDurabilityPolicy.TRANSIENT_LOCAL
             qos.reliability = QoSReliabilityPolicy.RELIABLE
             self.graph_marker_pub = self.create_publisher(MarkerArray, self.local_graph_marker_topic, qos)
+            # 정적 그래프 마커는 한 번만 퍼블리시
+            self._publish_static_graph_markers()
 
         timer_period = 1.0 / max(0.1, self.planner_hz)
         self.timer = self.create_timer(timer_period, self._on_timer)
@@ -253,9 +255,6 @@ class HybridAStarLocalPlanner(Node):
         if goal is None:
             self._throttled_warn('goal', '글로벌 경로 목표를 찾을 수 없습니다.')
             return
-
-        if self.publish_graph_markers:
-            self._publish_local_graph_markers(goal)
 
         path_states = self._plan_hybrid_astar(goal)
         if not path_states:
@@ -473,7 +472,8 @@ class HybridAStarLocalPlanner(Node):
             f'로컬 그래프 로드 완료 (노드 {node_count}, 엣지 {edge_count}) - {npz_path}'
         )
 
-    def _publish_local_graph_markers(self, goal: Optional[Dict[str, float]]) -> None:
+    def _publish_static_graph_markers(self) -> None:
+        """정적 그래프 마커를 한 번만 생성하여 퍼블리시 (TRANSIENT_LOCAL QoS로 지속)"""
         if (
             self.graph_marker_pub is None
             or self.local_graph_positions is None
@@ -485,34 +485,7 @@ class HybridAStarLocalPlanner(Node):
         marker_array = MarkerArray()
         stamp = self.get_clock().now().to_msg()
 
-        node_count = self.local_graph_positions.shape[0]
-        dynamic_costs = (
-            self.local_graph_dynamic_costs
-            if self.local_graph_dynamic_costs is not None
-            else np.zeros(node_count, dtype=np.float32)
-        )
-
-        if self.local_graph_total_costs is not None:
-            static_costs = self.local_graph_total_costs.astype(np.float32)
-        elif goal is not None:
-            goal_pos = np.array([goal['x'], goal['y']], dtype=np.float32)
-            goal_yaw = goal['yaw']
-            deltas = self.local_graph_positions - goal_pos
-            distances = np.linalg.norm(deltas, axis=1)
-            yaw_diff = np.abs(np.arctan2(np.sin(self.local_graph_yaws - goal_yaw), np.cos(self.local_graph_yaws - goal_yaw)))
-            static_costs = self.heuristic_weight * distances + 0.3 * yaw_diff
-        else:
-            static_costs = np.zeros(node_count, dtype=np.float32)
-
-        total_costs = static_costs + dynamic_costs.astype(np.float32)
-        if total_costs.size > 0:
-            min_cost = float(np.min(total_costs))
-            max_cost = float(np.max(total_costs))
-            span = max(max_cost - min_cost, 1e-6)
-            norm_costs = (total_costs - min_cost) / span
-        else:
-            norm_costs = np.zeros_like(total_costs)
-
+        # 노드 마커 (단순 파란색)
         node_marker = Marker()
         node_marker.header.frame_id = self.map_frame
         node_marker.header.stamp = stamp
@@ -523,25 +496,16 @@ class HybridAStarLocalPlanner(Node):
         node_marker.pose.orientation.w = 1.0
         node_marker.scale.x = self.local_graph_marker_scale
         node_marker.scale.y = self.local_graph_marker_scale
-        node_marker.color = ColorRGBA(r=0.1, g=0.4, b=0.9, a=0.85)
+        node_marker.color = ColorRGBA(r=0.2, g=0.5, b=0.9, a=0.6)
 
-        node_points: List[Point] = []
-        node_colors: List[ColorRGBA] = []
-        for idx, pos in enumerate(self.local_graph_positions):
-            node_points.append(Point(x=float(pos[0]), y=float(pos[1]), z=0.0))
-            norm = float(norm_costs[idx]) if norm_costs.size else 0.0
-            node_colors.append(
-                ColorRGBA(
-                    r=min(1.0, 0.2 + 0.8 * norm),
-                    g=min(1.0, 0.8 * (1.0 - norm)),
-                    b=min(1.0, 0.3 + 0.7 * (1.0 - norm)),
-                    a=0.9,
-                )
-            )
-        node_marker.points = node_points
-        node_marker.colors = node_colors
+        # 모든 노드 위치만 추가 (색상 계산 없음)
+        node_marker.points = [
+            Point(x=float(pos[0]), y=float(pos[1]), z=0.0)
+            for pos in self.local_graph_positions
+        ]
         marker_array.markers.append(node_marker)
 
+        # 엣지 마커 (단순 회색)
         edge_marker = Marker()
         edge_marker.header.frame_id = self.map_frame
         edge_marker.header.stamp = stamp
@@ -551,33 +515,23 @@ class HybridAStarLocalPlanner(Node):
         edge_marker.action = Marker.ADD
         edge_marker.pose.orientation.w = 1.0
         edge_marker.scale.x = self.local_graph_edge_scale
-        edge_marker.color = ColorRGBA(r=0.2, g=0.2, b=0.2, a=0.55)
+        edge_marker.color = ColorRGBA(r=0.3, g=0.3, b=0.3, a=0.4)
 
+        # 모든 엣지 추가 (색상 계산 없음)
         positions = self.local_graph_positions
-        edge_points: List[Point] = []
-        edge_colors: List[ColorRGBA] = []
         for src_idx, dst_idx in zip(self.local_graph_edges_from, self.local_graph_edges_to):
             src = positions[src_idx]
             dst = positions[dst_idx]
-            edge_points.append(Point(x=float(src[0]), y=float(src[1]), z=0.0))
-            edge_points.append(Point(x=float(dst[0]), y=float(dst[1]), z=0.0))
-            if norm_costs.size:
-                avg_norm = float((norm_costs[src_idx] + norm_costs[dst_idx]) * 0.5)
-            else:
-                avg_norm = 0.0
-            color = ColorRGBA(
-                r=min(1.0, 0.2 + 0.8 * avg_norm),
-                g=min(1.0, 0.8 * (1.0 - avg_norm)),
-                b=min(1.0, 0.3 + 0.7 * (1.0 - avg_norm)),
-                a=0.5,
-            )
-            edge_colors.append(color)
-            edge_colors.append(color)
-        edge_marker.points = edge_points
-        edge_marker.colors = edge_colors
+            edge_marker.points.append(Point(x=float(src[0]), y=float(src[1]), z=0.0))
+            edge_marker.points.append(Point(x=float(dst[0]), y=float(dst[1]), z=0.0))
         marker_array.markers.append(edge_marker)
 
         self.graph_marker_pub.publish(marker_array)
+        self.get_logger().info(
+            f'정적 그래프 마커 퍼블리시 완료 '
+            f'(노드 {self.local_graph_positions.shape[0]}개, '
+            f'엣지 {self.local_graph_edges_from.shape[0]}개)'
+        )
 
     # --------------------------------------------------------------------- #
     # Graph-based planning helpers
