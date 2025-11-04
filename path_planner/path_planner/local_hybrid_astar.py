@@ -651,9 +651,6 @@ class HybridAStarLocalPlanner(Node):
             x = float(start[0] + (end[0] - start[0]) * t)
             y = float(start[1] + (end[1] - start[1]) * t)
 
-            if self._static_map_collision(x, y):
-                return True, 1.0
-
             dyn_cost = self._dynamic_cost_at(x, y)
             if dyn_cost >= self.dynamic_obstacle_threshold:
                 return True, dyn_cost
@@ -861,11 +858,6 @@ class HybridAStarLocalPlanner(Node):
             return 0.0
         return float(self.local_graph_dynamic_costs[idx])
 
-    def _point_in_collision(self, x: float, y: float) -> bool:
-        if self.dynamic_obstacle_threshold <= 0.0:
-            return False
-        return self._dynamic_cost_at(x, y) >= self.dynamic_obstacle_threshold
-
     def _world_to_cell(self, x: float, y: float) -> Optional[Tuple[int, int]]:
         origin_x, origin_y = self.costmap_origin
         col = int(math.floor((x - origin_x) / self.grid_resolution))
@@ -905,58 +897,9 @@ class HybridAStarLocalPlanner(Node):
         msg.data = data
         self.costmap_pub.publish(msg)
 
-    def _collision_check(self, state: HybridState, next_state: HybridState) -> bool:
-        steps = max(2, int(math.ceil(self.step_size / max(self.graph_collision_step, 1e-3))))
-        for i in range(steps + 1):
-            t = i / steps
-            x = state.x + (next_state.x - state.x) * t
-            y = state.y + (next_state.y - state.y) * t
-            if self._dynamic_cost_at(x, y) >= self.dynamic_obstacle_threshold:
-                return True
-        return False
-
     # --------------------------------------------------------------------- #
     # Static map utilities
     # --------------------------------------------------------------------- #
-    def _static_map_collision(self, x: float, y: float) -> bool:
-        """정적 맵에서 충돌 체크 (차량 반경 고려)"""
-        if self.static_map is None or self.static_map_info is None:
-            return False
-
-        # 차량 중심 좌표 → 맵 좌표
-        map_x = int((x - self.static_map_info.origin.position.x) / self.static_map_info.resolution)
-        map_y = int((y - self.static_map_info.origin.position.y) / self.static_map_info.resolution)
-
-        height, width = self.static_map.shape
-
-        # 맵 밖은 충돌 아님 (페널티는 _get_map_based_penalty에서 처리)
-        if map_x < 0 or map_x >= width or map_y < 0 or map_y >= height:
-            return False
-
-        # 차량 반경 내 모든 셀 체크
-        vehicle_cells = int(math.ceil(self.vehicle_radius / self.static_map_info.resolution))
-
-        for dy in range(-vehicle_cells, vehicle_cells + 1):
-            for dx in range(-vehicle_cells, vehicle_cells + 1):
-                check_x = map_x + dx
-                check_y = map_y + dy
-
-                # 맵 범위 체크는 건너뛰기
-                if check_x < 0 or check_x >= width or check_y < 0 or check_y >= height:
-                    continue
-
-                # 원형 차량 모델
-                dist = math.hypot(dx * self.static_map_info.resolution,
-                                dy * self.static_map_info.resolution)
-                if dist > self.vehicle_radius:
-                    continue
-
-                cell_value = self.static_map[check_y, check_x]
-                if cell_value >= 50:  # Occupied or high uncertainty
-                    return True
-
-        return False
-
     def _get_map_based_penalty(self, x: float, y: float) -> float:
         """정적 맵 기반 페널티 계산"""
         if self.static_map is None or self.static_map_info is None:
@@ -1064,233 +1007,23 @@ class HybridAStarLocalPlanner(Node):
         goal_point = self.global_path_np[goal_idx]
         return {'x': float(goal_point[0]), 'y': float(goal_point[1]), 'yaw': float(goal_point[2])}
 
-    def _heuristic(self, state: HybridState, goal: Dict[str, float]) -> float:
-        """
-        3단계 비용:
-        1. 목표까지 거리 (기본)
-        2. 글로벌 경로로부터의 거리 (강한 페널티)
-        3. 맵 외곽/불가능 영역 (매우 큰 페널티)
-        """
-        # 1. 기본 거리 + 방향
-        distance = math.hypot(state.x - goal['x'], state.y - goal['y'])
-        yaw_error = abs(wrap_angle(state.yaw - goal['yaw']))
-
-        # 2. 글로벌 경로로부터의 거리 (세그먼트 기반) - 최적화
-        path_deviation = self._get_path_deviation(state.x, state.y)
-
-        # 3. 맵 기반 페널티 (주행 불가능 영역 근처)
-        map_penalty = self._get_map_based_penalty(state.x, state.y)
-
-        return (
-            self.heuristic_weight * distance                          # 목표 거리
-            + 0.3 * yaw_error                                         # 방향 오차
-            + self.global_path_deviation_weight * path_deviation      # 글로벌 경로 이탈
-            + self.static_map_penalty_weight * map_penalty            # 맵 외곽/불가 영역
-        )
-
-    def _is_goal(self, state: HybridState, goal: Dict[str, float]) -> bool:
-        distance = math.hypot(state.x - goal['x'], state.y - goal['y'])
-        if distance > self.goal_tolerance:
-            return False
-        yaw_error = abs(wrap_angle(state.yaw - goal['yaw']))
-        return yaw_error <= self.goal_yaw_tolerance
-
     # --------------------------------------------------------------------- #
-    # Hybrid A* search
+    # Graph-based search wrapper
     # --------------------------------------------------------------------- #
     def _plan_hybrid_astar(self, goal: Dict[str, float]) -> Optional[List[HybridState]]:
-        if self.use_local_graph_planner and self.local_graph_positions is not None:
-            graph_path = self._plan_graph_astar(goal)
-            if graph_path:
-                return graph_path
-            else:
-                self.get_logger().warn('그래프 기반 플래너가 실패하여 기존 Hybrid A*로 폴백합니다.')
-
-        if self.latest_pose is None:
+        if not self.use_local_graph_planner:
+            self.get_logger().warn('로컬 그래프 플래너가 비활성화되어 경로를 생성할 수 없습니다.')
             return None
 
-        start_state = HybridState(
-            x=self.latest_pose[0],
-            y=self.latest_pose[1],
-            yaw=self.latest_pose[2],
-            steering=0.0,
-        )
+        graph_path = self._plan_graph_astar(goal)
+        if graph_path:
+            return graph_path
 
-        # 디버깅: 시작 상태가 유효한지 확인
-        if self._static_map_collision(start_state.x, start_state.y):
-            self.get_logger().warn(
-                f'시작 위치({start_state.x:.2f}, {start_state.y:.2f})가 정적 맵 장애물과 충돌합니다.'
-            )
-            return None
-
-        start_key = self._discretize_state(start_state)
-        if start_key is None:
-            self.get_logger().warn('시작 상태를 이산화할 수 없습니다.')
-            return None
-
-        # 디버깅: 목표점 정보
-        goal_dist = math.hypot(start_state.x - goal['x'], start_state.y - goal['y'])
-        self.get_logger().debug(
-            f'Hybrid A* 시작: 목표거리={goal_dist:.2f}m, '
-            f'목표=({goal["x"]:.2f}, {goal["y"]:.2f})'
-        )
-
-        open_list: List[Tuple[float, float, Tuple[int, int, int], HybridState]] = []
-
-        g_scores: Dict[Tuple[int, int, int], float] = {start_key: 0.0}
-        came_from: Dict[Tuple[int, int, int], Optional[Tuple[int, int, int]]] = {start_key: None}
-        state_lookup: Dict[Tuple[int, int, int], HybridState] = {start_key: start_state}
-
-        start_h = self._heuristic(start_state, goal)
-        heapq.heappush(open_list, (start_h, 0.0, start_key, start_state))
-
-        iterations = 0
-        expanded_count = 0
-
-        while open_list and iterations < self.max_iterations:
-            iterations += 1
-            _, current_g, current_key, current_state = heapq.heappop(open_list)
-
-            if current_g > g_scores.get(current_key, float('inf')) + 1e-6:
-                continue
-
-            if self._is_goal(current_state, goal):
-                path = self._reconstruct_path(current_key, came_from, state_lookup)
-                self.get_logger().debug(
-                    f'Hybrid A* 성공: {iterations}회 반복, {expanded_count}개 확장, 경로길이={len(path)}'
-                )
-                return path
-
-            expanded_this_state = 0
-            expand_candidates = list(self._expand_state(current_state))
-
-            discretize_fail = 0
-            g_score_fail = 0
-            lidar_col_fail = 0
-            static_col_fail = 0
-
-            for next_state, travel_cost in expand_candidates:
-                next_key = self._discretize_state(next_state)
-                if next_key is None:
-                    discretize_fail += 1
-                    continue
-
-                # 동적 장애물 페널티 (LiDAR)
-                obstacle_penalty = self.obstacle_cost_weight * self._dynamic_cost_at(next_state.x, next_state.y)
-
-                # 조향 변화 페널티
-                steering_penalty = self.steering_change_weight * abs(next_state.steering - current_state.steering)
-
-                # 글로벌 경로 이탈 페널티 (g-cost) - 최적화
-                path_deviation = self._get_path_deviation(next_state.x, next_state.y)
-                path_deviation_cost = self.path_distance_weight * path_deviation
-
-                tentative_g = current_g + travel_cost + obstacle_penalty + steering_penalty + path_deviation_cost
-
-                if tentative_g >= g_scores.get(next_key, float('inf')) - 1e-6:
-                    g_score_fail += 1
-                    continue
-
-                # 동적 장애물 충돌 체크 (LiDAR)
-                if self._collision_check(current_state, next_state):
-                    lidar_col_fail += 1
-                    continue
-
-                # 정적 맵 충돌 체크
-                if self._static_map_collision(next_state.x, next_state.y):
-                    static_col_fail += 1
-                    continue
-
-                g_scores[next_key] = tentative_g
-                came_from[next_key] = current_key
-                state_lookup[next_key] = next_state
-                h = self._heuristic(next_state, goal)
-                heapq.heappush(open_list, (tentative_g + h, tentative_g, next_key, next_state))
-                expanded_this_state += 1
-
-            # 디버깅: 확장 실패 시 로그
-            if len(expand_candidates) > 0 and expanded_this_state == 0:
-                self.get_logger().warn(
-                    f'확장 실패: 후보={len(expand_candidates)}, '
-                    f'이산화실패={discretize_fail}, g-score={g_score_fail}, '
-                    f'LiDAR충돌={lidar_col_fail}, 정적맵충돌={static_col_fail}'
-                )
-
-            expanded_count += expanded_this_state
-
-        # 실패 원인 분석
-        self.get_logger().warn(
-            f'Hybrid A* 실패: {iterations}회 반복, {expanded_count}개 상태 확장, '
-            f'목표거리={goal_dist:.2f}m'
-        )
+        self.get_logger().warn('그래프 기반 플래너가 경로를 찾지 못했습니다.')
         return None
 
-    def _expand_state(self, state: HybridState) -> List[Tuple[HybridState, float]]:
-        controls = np.linspace(-self.max_steering_angle, self.max_steering_angle, self.num_steering_samples)
-        next_candidates: List[Tuple[HybridState, float]] = []
-
-        generated_count = 0
-        lidar_collision_count = 0
-
-        for steering in controls:
-            beta = self.step_size * math.tan(steering) / self.wheelbase
-            if abs(beta) < 1e-6:
-                next_x = state.x + self.step_size * math.cos(state.yaw)
-                next_y = state.y + self.step_size * math.sin(state.yaw)
-                next_yaw = wrap_angle(state.yaw)
-            else:
-                next_yaw = wrap_angle(state.yaw + beta)
-                r = self.step_size / beta
-                next_x = state.x + r * (math.sin(next_yaw) - math.sin(state.yaw))
-                next_y = state.y - r * (math.cos(next_yaw) - math.cos(state.yaw))
-
-            next_state = HybridState(x=next_x, y=next_y, yaw=next_yaw, steering=float(steering))
-            generated_count += 1
-
-            # 직진 선호 (조향각에 비례한 비용)
-            travel_cost = self.step_size * (1.0 + 0.3 * abs(steering))
-
-            if self._point_in_collision(next_state.x, next_state.y):
-                lidar_collision_count += 1
-                continue
-            next_candidates.append((next_state, travel_cost))
-
-        # 디버깅: 첫 번째 상태 확장 시 정보 출력
-        if generated_count > 0 and len(next_candidates) == 0:
-            self.get_logger().warn(
-                f'_expand_state: {generated_count}개 생성, '
-                f'{lidar_collision_count}개 LiDAR 충돌 필터링, '
-                f'최종 0개 반환'
-            )
-
-        return next_candidates
-
-    def _discretize_state(self, state: HybridState) -> Optional[Tuple[int, int, int]]:
-        cell = self._world_to_cell(state.x, state.y)
-        if cell is None:
-            return None
-        row, col = cell
-        yaw = wrap_angle(state.yaw)
-        yaw_norm = (yaw + math.pi) / (2.0 * math.pi)
-        yaw_bin = int(math.floor(yaw_norm * self.heading_bins)) % self.heading_bins
-        return row, col, yaw_bin
-
-    def _reconstruct_path(
-        self,
-        key: Tuple[int, int, int],
-        came_from: Dict[Tuple[int, int, int], Optional[Tuple[int, int, int]]],
-        state_lookup: Dict[Tuple[int, int, int], HybridState],
-    ) -> List[HybridState]:
-        path: List[HybridState] = []
-        current_key: Optional[Tuple[int, int, int]] = key
-        while current_key is not None:
-            path.append(state_lookup[current_key])
-            current_key = came_from.get(current_key)
-        path.reverse()
-        return path
-
     def _states_to_path(self, states: List[HybridState]) -> Path:
-        """Hybrid A* 결과를 조밀한 경로로 변환 (보간 포함)"""
+        """탐색 결과 상태들을 조밀한 경로로 변환 (보간 포함)"""
 
         path_msg = Path()
         path_msg.header.frame_id = self.map_frame
@@ -1313,7 +1046,7 @@ class HybridAStarLocalPlanner(Node):
             robot_pose.pose.orientation.w = math.cos(half_yaw)
             path_msg.poses.append(robot_pose)
 
-        # 2. Hybrid A* 경로 생성 (원본)
+        # 2. 탐색으로 얻은 경로를 Pose 시퀀스로 변환
         raw_poses = []
         for state in states:
             pose = PoseStamped()
