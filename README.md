@@ -52,8 +52,6 @@ cd ~/f1_ws
 git clone https://github.com/t0mark/f1tenth.git src
 
 source /opt/ros/humble/setup.bash
-rosdep update
-rosdep install -i --from-path src --rosdistro humble -y
 colcon build --symlink-install
 echo source ~/f1_ws/install/setup.bash >> ~/.bashrc
 
@@ -61,11 +59,15 @@ echo source ~/f1_ws/install/setup.bash >> ~/.bashrc
 mkdir -p ~/hw_ws
 cd ~/hw_ws
 git clone https://github.com/t0mark/f1tenth.git -b hardware src
-source /opt/ros/humble/setup.bash
+colcon build --symlink-install
+## 순서대로 실행
+source ~/f1_ws/install/setup.bash
+source ~/hw_ws/install/setup.bash
+
+
+# 의존성 문제 발생 시
 rosdep update
 rosdep install -i --from-path src --rosdistro humble -y
-colcon build --symlink-install
-echo source ~/hw_ws/install/setup.bash >> ~/.bashrc
 ```
 
 > **참고:** `colcon build` 실행 시 `vesc_ackermann`, `vesc_driver` 관련 경고가 나타날 수 있습니다. 이는 패키지 개발자를 위한 권장 사항으로, 사용자에게는 영향을 주지 않으므로 무시해도 괜찮습니다.
@@ -83,14 +85,8 @@ ros2 launch f1tenth camera_launch.py
 
 ### 시뮬레이션 - 통합 시스템 실행
 ```bash
-# 중심선 기반 경로 + 장애물 회피 + 제어
-ros2 launch path_planner path_planner_launch.py
-```
-
-### 시뮬레이션 - 개별 패키지 실행
-```bash
-# 1. 시뮬레이터
-ros2 launch simulator gym_bridge_launch.py
+# 시뮬레이터
+ros2 launch f1tenth full_system_launch.py
 ```
 
 ### 체크포인트 기록
