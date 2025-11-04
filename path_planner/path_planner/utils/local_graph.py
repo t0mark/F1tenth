@@ -11,6 +11,7 @@ The graph is stored as:
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import math
 from dataclasses import dataclass
@@ -32,6 +33,9 @@ class GraphData:
     node_heading_offsets: np.ndarray
     node_curvatures: np.ndarray
     node_wall_distances: np.ndarray
+    node_curvature_cost: np.ndarray
+    node_wall_cost: np.ndarray
+    node_total_cost: np.ndarray
     node_indices: np.ndarray
     edges_from: np.ndarray
     edges_to: np.ndarray
@@ -245,6 +249,15 @@ def sample_wall_distances(
     return distances
 
 
+def compute_curvature_costs(
+    curvature: np.ndarray,
+    curvature_weight: float,
+) -> np.ndarray:
+    if curvature_weight <= 0.0:
+        return np.zeros_like(curvature, dtype=np.float32)
+    return np.abs(curvature.astype(np.float32)) * float(curvature_weight)
+
+
 def build_graph(
     centerline: np.ndarray,
     headings: np.ndarray,
@@ -263,6 +276,7 @@ def build_graph(
     map_origin: Tuple[float, float],
     map_resolution: float,
     wall_distance_threshold: float,
+    curvature_cost_weight: float,
     closed_loop: bool,
 ) -> GraphData:
     num_s = len(centerline)
@@ -317,6 +331,15 @@ def build_graph(
         map_resolution,
         wall_distance_threshold,
     )
+    node_curv_cost_flat = compute_curvature_costs(
+        node_curv_flat,
+        curvature_cost_weight,
+    )
+    if wall_distance_threshold > 1e-6:
+        node_wall_cost_flat = np.clip((wall_distance_threshold - node_wall_dist_flat) / wall_distance_threshold, 0.0, 1.0)
+    else:
+        node_wall_cost_flat = np.zeros_like(node_wall_dist_flat, dtype=np.float32)
+    node_total_cost_flat = node_wall_cost_flat + node_curv_cost_flat
 
     s_indices = np.arange(num_s, dtype=np.int32)
     l_indices = np.arange(num_lat, dtype=np.int32)
@@ -386,6 +409,9 @@ def build_graph(
         node_heading_offsets=node_h_flat,
         node_curvatures=node_curv_flat,
         node_wall_distances=node_wall_dist_flat,
+        node_curvature_cost=node_curv_cost_flat,
+        node_wall_cost=node_wall_cost_flat,
+        node_total_cost=node_total_cost_flat,
         node_indices=node_indices,
         edges_from=np.asarray(edges_from, dtype=np.int32),
         edges_to=np.asarray(edges_to, dtype=np.int32),
@@ -410,6 +436,9 @@ def save_graph(graph: GraphData, data_dir: Path, prefix: str, meta: dict) -> Non
         node_heading_offsets=graph.node_heading_offsets,
         node_curvatures=graph.node_curvatures,
         node_wall_distances=graph.node_wall_distances,
+        node_curvature_cost=graph.node_curvature_cost,
+        node_wall_cost=graph.node_wall_cost,
+        node_total_cost=graph.node_total_cost,
         node_indices=graph.node_indices,
         edges_from=graph.edges_from,
         edges_to=graph.edges_to,
@@ -505,6 +534,18 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.4,
         help='Distances below this value (m) are clamped to zero when stored (default: %(default)s)',
+    )
+    parser.add_argument(
+        '--curvature-cost-weight',
+        type=float,
+        default=1.0,
+        help='Weight applied to abs(curvature) when computing curvature-based cost (default: %(default)s)',
+    )
+    parser.add_argument(
+        '--csv-output',
+        type=Path,
+        default=None,
+        help='Optional path to export per-node heuristic CSV (default: <output-dir>/<prefix>_heuristics.csv)',
     )
     parser.add_argument(
         '--curvature-bias-gain',
@@ -606,6 +647,7 @@ def main() -> None:
         map_origin=map_origin,
         map_resolution=map_resolution,
         wall_distance_threshold=float(args.wall_distance_threshold),
+        curvature_cost_weight=float(args.curvature_cost_weight),
         closed_loop=bool(args.closed_loop),
     )
 
@@ -623,6 +665,7 @@ def main() -> None:
         'curvature_bias_gain': float(args.curvature_bias_gain),
         'curvature_bias_limit': float(args.curvature_bias_limit),
         'wall_distance_threshold': float(args.wall_distance_threshold),
+        'curvature_cost_weight': float(args.curvature_cost_weight),
         'closed_loop': bool(args.closed_loop),
         'centerline_length': float(total_length),
     }
@@ -631,9 +674,55 @@ def main() -> None:
 
     save_graph(graph, args.output_dir, args.prefix, meta)
 
+    csv_path = args.csv_output
+    if csv_path is None:
+        csv_path = args.output_dir / f'{args.prefix}_heuristics.csv'
+    else:
+        csv_path = csv_path.expanduser()
+        if not csv_path.is_absolute():
+            csv_path = (Path.cwd() / csv_path).resolve()
+
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    with csv_path.open('w', newline='', encoding='utf-8') as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow([
+            's_idx',
+            'lat_idx',
+            'head_idx',
+            'x',
+            'y',
+            'wall_distance',
+            'curvature',
+            'wall_cost',
+            'curvature_cost',
+            'total_cost',
+        ])
+        for (s_idx, lat_idx, head_idx), pos, wall_dist, curv, wall_cost, curv_cost, total_cost in zip(
+            graph.node_indices,
+            graph.node_positions,
+            graph.node_wall_distances,
+            graph.node_curvatures,
+            graph.node_wall_cost,
+            graph.node_curvature_cost,
+            graph.node_total_cost,
+        ):
+            writer.writerow([
+                int(s_idx),
+                int(lat_idx),
+                int(head_idx),
+                f'{float(pos[0]):.6f}',
+                f'{float(pos[1]):.6f}',
+                f'{float(wall_dist):.6f}',
+                f'{float(curv):.6f}',
+                f'{float(wall_cost):.6f}',
+                f'{float(curv_cost):.6f}',
+                f'{float(total_cost):.6f}',
+            ])
+
     print(
         f'Graph saved to {args.output_dir} with prefix "{args.prefix}" '
-        f'(nodes={graph.node_positions.shape[0]}, edges={graph.edges_from.shape[0]})'
+        f'(nodes={graph.node_positions.shape[0]}, edges={graph.edges_from.shape[0]})\n'
+        f'Heuristic CSV exported to {csv_path}'
     )
 
 

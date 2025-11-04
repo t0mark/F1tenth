@@ -15,6 +15,7 @@ from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy, QoS
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import ColorRGBA
 from visualization_msgs.msg import Marker, MarkerArray
+from scipy.spatial import cKDTree
 
 
 def wrap_angle(angle: float) -> float:
@@ -83,6 +84,7 @@ class HybridAStarLocalPlanner(Node):
         self.declare_parameter('graph_yaw_weight', 1.5)
         self.declare_parameter('graph_goal_tolerance', 0.5)
         self.declare_parameter('graph_collision_step', 0.1)
+        self.declare_parameter('dynamic_obstacle_threshold', 0.7)
 
         # Parameter retrieval
         self.global_path_topic = self.get_parameter('global_path_topic').get_parameter_value().string_value
@@ -130,11 +132,12 @@ class HybridAStarLocalPlanner(Node):
         self.graph_yaw_weight = max(1e-3, float(self.get_parameter('graph_yaw_weight').value))
         self.graph_goal_tolerance = max(0.05, float(self.get_parameter('graph_goal_tolerance').value))
         self.graph_collision_step = max(0.02, float(self.get_parameter('graph_collision_step').value))
+        self.dynamic_obstacle_threshold = float(self.get_parameter('dynamic_obstacle_threshold').value)
 
         # Derived costmap sizes
         self.grid_cols = max(3, int(math.ceil(self.grid_width / self.grid_resolution)))
         self.grid_rows = max(3, int(math.ceil(self.grid_height / self.grid_resolution)))
-        self.obstacle_grid = np.zeros((self.grid_rows, self.grid_cols), dtype=np.uint8)
+        self.obstacle_grid = None
 
         # Runtime state
         self.global_path_np: Optional[np.ndarray] = None  # shape (N, 3) for x, y, yaw
@@ -156,6 +159,11 @@ class HybridAStarLocalPlanner(Node):
         self.local_graph_heading_offsets: Optional[np.ndarray] = None
         self.local_graph_curvatures: Optional[np.ndarray] = None
         self.local_graph_wall_distances: Optional[np.ndarray] = None
+        self.local_graph_curvature_costs: Optional[np.ndarray] = None
+        self.local_graph_wall_costs: Optional[np.ndarray] = None
+        self.local_graph_total_costs: Optional[np.ndarray] = None
+        self.local_graph_dynamic_costs: Optional[np.ndarray] = None
+        self.local_graph_tree = None
         self.local_graph_edges_from: Optional[np.ndarray] = None
         self.local_graph_edges_to: Optional[np.ndarray] = None
         self.local_graph_edges_cost: Optional[np.ndarray] = None
@@ -165,7 +173,6 @@ class HybridAStarLocalPlanner(Node):
         self.local_graph_index_map: Dict[Tuple[int, int, int], int] = {}
         self.local_graph_meta: Dict[str, object] = {}
         self.graph_marker_pub = None
-        self._graph_markers_sent = False
 
         # ROS interfaces
         self.global_path_sub = self.create_subscription(Path, self.global_path_topic, self._on_global_path, 10)
@@ -186,13 +193,9 @@ class HybridAStarLocalPlanner(Node):
         )
 
         self.path_pub = self.create_publisher(Path, self.output_topic, 10)
-        self.costmap_pub = (
-            self.create_publisher(OccupancyGrid, self.costmap_topic, 1)
-            if self.publish_costmap
-            else None
-        )
+        self.costmap_pub = None
         self._load_local_graph()
-        if self.publish_graph_markers and self.local_graph_positions is not None:
+        if self.publish_graph_markers:
             qos = QoSProfile(history=QoSHistoryPolicy.KEEP_LAST, depth=1)
             qos.durability = QoSDurabilityPolicy.TRANSIENT_LOCAL
             qos.reliability = QoSReliabilityPolicy.RELIABLE
@@ -265,20 +268,20 @@ class HybridAStarLocalPlanner(Node):
     # Planner loop
     # --------------------------------------------------------------------- #
     def _on_timer(self) -> None:
-        if self.publish_graph_markers and not self._graph_markers_sent:
-            self._publish_local_graph_markers()
-
         if not self._data_ready():
             return
 
-        if not self._update_costmap():
-            self._throttled_warn('costmap', '코스트맵을 업데이트할 수 없습니다.')
+        if not self._update_dynamic_costs():
+            self._throttled_warn('dynamic_cost', '동적 장애물 코스트를 업데이트할 수 없습니다.')
             return
 
         goal = self._select_goal()
         if goal is None:
             self._throttled_warn('goal', '글로벌 경로 목표를 찾을 수 없습니다.')
             return
+
+        if self.publish_graph_markers:
+            self._publish_local_graph_markers(goal)
 
         path_states = self._plan_hybrid_astar(goal)
         if not path_states:
@@ -327,6 +330,9 @@ class HybridAStarLocalPlanner(Node):
         self.local_graph_heading_offsets = None
         self.local_graph_curvatures = None
         self.local_graph_wall_distances = None
+        self.local_graph_curvature_costs = None
+        self.local_graph_wall_costs = None
+        self.local_graph_total_costs = None
         self.local_graph_indices = None
         self.local_graph_edges_from = None
         self.local_graph_edges_to = None
@@ -389,6 +395,24 @@ class HybridAStarLocalPlanner(Node):
                 self.local_graph_curvatures = np.array(npz_file['node_curvatures'], dtype=np.float32)
             else:
                 self.local_graph_curvatures = np.zeros_like(self.local_graph_s_values, dtype=np.float32)
+            if 'node_wall_distances' in npz_file:
+                self.local_graph_wall_distances = np.array(npz_file['node_wall_distances'], dtype=np.float32)
+            else:
+                self.local_graph_wall_distances = np.zeros_like(self.local_graph_s_values, dtype=np.float32)
+            if 'node_curvature_cost' in npz_file:
+                self.local_graph_curvature_costs = np.array(npz_file['node_curvature_cost'], dtype=np.float32)
+            else:
+                self.local_graph_curvature_costs = np.zeros_like(self.local_graph_s_values, dtype=np.float32)
+            if 'node_wall_cost' in npz_file:
+                self.local_graph_wall_costs = np.array(npz_file['node_wall_cost'], dtype=np.float32)
+            else:
+                self.local_graph_wall_costs = np.zeros_like(self.local_graph_s_values, dtype=np.float32)
+            if 'node_total_cost' in npz_file:
+                self.local_graph_total_costs = np.array(npz_file['node_total_cost'], dtype=np.float32)
+            else:
+                self.local_graph_total_costs = (
+                    self.local_graph_curvature_costs + self.local_graph_wall_costs
+                )
         finally:
             npz_file.close()
 
@@ -411,6 +435,12 @@ class HybridAStarLocalPlanner(Node):
             np.array(lst, dtype=np.float32) if lst else np.empty(0, dtype=np.float32)
             for lst in neighbor_cost_lists
         ]
+        if node_count > 0:
+            self.local_graph_tree = cKDTree(self.local_graph_positions)
+            self.local_graph_dynamic_costs = np.zeros(node_count, dtype=np.float32)
+        else:
+            self.local_graph_tree = None
+            self.local_graph_dynamic_costs = None
 
         if index_path.exists():
             try:
@@ -447,12 +477,11 @@ class HybridAStarLocalPlanner(Node):
 
         node_count = int(self.local_graph_positions.shape[0])
         edge_count = int(self.local_graph_edges_from.shape[0])
-        self._graph_markers_sent = False
         self.get_logger().info(
             f'로컬 그래프 로드 완료 (노드 {node_count}, 엣지 {edge_count}) - {npz_path}'
         )
 
-    def _publish_local_graph_markers(self) -> None:
+    def _publish_local_graph_markers(self, goal: Optional[Dict[str, float]]) -> None:
         if (
             self.graph_marker_pub is None
             or self.local_graph_positions is None
@@ -463,6 +492,34 @@ class HybridAStarLocalPlanner(Node):
 
         marker_array = MarkerArray()
         stamp = self.get_clock().now().to_msg()
+
+        node_count = self.local_graph_positions.shape[0]
+        dynamic_costs = (
+            self.local_graph_dynamic_costs
+            if self.local_graph_dynamic_costs is not None
+            else np.zeros(node_count, dtype=np.float32)
+        )
+
+        if self.local_graph_total_costs is not None:
+            static_costs = self.local_graph_total_costs.astype(np.float32)
+        elif goal is not None:
+            goal_pos = np.array([goal['x'], goal['y']], dtype=np.float32)
+            goal_yaw = goal['yaw']
+            deltas = self.local_graph_positions - goal_pos
+            distances = np.linalg.norm(deltas, axis=1)
+            yaw_diff = np.abs(np.arctan2(np.sin(self.local_graph_yaws - goal_yaw), np.cos(self.local_graph_yaws - goal_yaw)))
+            static_costs = self.heuristic_weight * distances + 0.3 * yaw_diff
+        else:
+            static_costs = np.zeros(node_count, dtype=np.float32)
+
+        total_costs = static_costs + dynamic_costs.astype(np.float32)
+        if total_costs.size > 0:
+            min_cost = float(np.min(total_costs))
+            max_cost = float(np.max(total_costs))
+            span = max(max_cost - min_cost, 1e-6)
+            norm_costs = (total_costs - min_cost) / span
+        else:
+            norm_costs = np.zeros_like(total_costs)
 
         node_marker = Marker()
         node_marker.header.frame_id = self.map_frame
@@ -476,11 +533,21 @@ class HybridAStarLocalPlanner(Node):
         node_marker.scale.y = self.local_graph_marker_scale
         node_marker.color = ColorRGBA(r=0.1, g=0.4, b=0.9, a=0.85)
 
-        node_points = [
-            Point(x=float(pos[0]), y=float(pos[1]), z=0.0)
-            for pos in self.local_graph_positions
-        ]
+        node_points: List[Point] = []
+        node_colors: List[ColorRGBA] = []
+        for idx, pos in enumerate(self.local_graph_positions):
+            node_points.append(Point(x=float(pos[0]), y=float(pos[1]), z=0.0))
+            norm = float(norm_costs[idx]) if norm_costs.size else 0.0
+            node_colors.append(
+                ColorRGBA(
+                    r=min(1.0, 0.2 + 0.8 * norm),
+                    g=min(1.0, 0.8 * (1.0 - norm)),
+                    b=min(1.0, 0.3 + 0.7 * (1.0 - norm)),
+                    a=0.9,
+                )
+            )
         node_marker.points = node_points
+        node_marker.colors = node_colors
         marker_array.markers.append(node_marker)
 
         edge_marker = Marker()
@@ -496,16 +563,29 @@ class HybridAStarLocalPlanner(Node):
 
         positions = self.local_graph_positions
         edge_points: List[Point] = []
+        edge_colors: List[ColorRGBA] = []
         for src_idx, dst_idx in zip(self.local_graph_edges_from, self.local_graph_edges_to):
             src = positions[src_idx]
             dst = positions[dst_idx]
             edge_points.append(Point(x=float(src[0]), y=float(src[1]), z=0.0))
             edge_points.append(Point(x=float(dst[0]), y=float(dst[1]), z=0.0))
+            if norm_costs.size:
+                avg_norm = float((norm_costs[src_idx] + norm_costs[dst_idx]) * 0.5)
+            else:
+                avg_norm = 0.0
+            color = ColorRGBA(
+                r=min(1.0, 0.2 + 0.8 * avg_norm),
+                g=min(1.0, 0.8 * (1.0 - avg_norm)),
+                b=min(1.0, 0.3 + 0.7 * (1.0 - avg_norm)),
+                a=0.5,
+            )
+            edge_colors.append(color)
+            edge_colors.append(color)
         edge_marker.points = edge_points
+        edge_marker.colors = edge_colors
         marker_array.markers.append(edge_marker)
 
         self.graph_marker_pub.publish(marker_array)
-        self._graph_markers_sent = True
 
     # --------------------------------------------------------------------- #
     # Graph-based planning helpers
@@ -560,10 +640,10 @@ class HybridAStarLocalPlanner(Node):
             if self._static_map_collision(x, y):
                 return True, 1.0
 
-            cell_cost = self._cell_value(x, y)
-            if cell_cost >= 1.0:
-                return True, cell_cost
-            max_cell_cost = max(max_cell_cost, cell_cost)
+            dyn_cost = self._dynamic_cost_at(x, y)
+            if dyn_cost >= self.dynamic_obstacle_threshold:
+                return True, dyn_cost
+            max_cell_cost = max(max_cell_cost, dyn_cost)
 
         return False, max_cell_cost
 
@@ -576,12 +656,18 @@ class HybridAStarLocalPlanner(Node):
         yaw_error = abs(wrap_angle(float(self.local_graph_yaws[node_id]) - goal_yaw))
         path_deviation = self._get_path_deviation(float(node_pos[0]), float(node_pos[1]))
         map_penalty = self._get_map_based_penalty(float(node_pos[0]), float(node_pos[1]))
+        extra_cost = 0.0
+        if self.local_graph_curvature_costs is not None:
+            extra_cost += float(self.local_graph_curvature_costs[node_id])
+        if self.local_graph_wall_costs is not None:
+            extra_cost += self.static_map_penalty_weight * float(self.local_graph_wall_costs[node_id])
 
         return (
             self.heuristic_weight * distance
             + 0.3 * yaw_error
             + self.global_path_deviation_weight * path_deviation
             + self.static_map_penalty_weight * map_penalty
+            + extra_cost
         )
 
     def _graph_reconstruct_path(self, goal_node: int, came_from: Dict[int, Optional[int]]) -> List[int]:
@@ -689,122 +775,81 @@ class HybridAStarLocalPlanner(Node):
     # --------------------------------------------------------------------- #
     # Costmap utilities
     # --------------------------------------------------------------------- #
-    def _update_costmap(self) -> bool:
-        if self.latest_pose is None or self.latest_scan is None:
+    def _update_dynamic_costs(self) -> bool:
+        if (
+            self.latest_pose is None
+            or self.latest_scan is None
+            or self.local_graph_tree is None
+            or self.local_graph_dynamic_costs is None
+        ):
             return False
 
-        self.obstacle_grid.fill(0)
+        self.local_graph_dynamic_costs.fill(0.0)
         robot_x, robot_y, robot_yaw = self.latest_pose
+        scan = self.latest_scan
 
-        # 코스트맵을 로봇 앞쪽으로 배치 (로봇 방향 기준)
-        # x축: 로봇 뒤쪽 20%, 앞쪽 80%
-        # y축: 좌우 대칭 (50%, 50%)
-        forward_ratio = 0.8  # 앞쪽 비율
         cos_yaw = math.cos(robot_yaw)
         sin_yaw = math.sin(robot_yaw)
-
-        # 로봇 기준 로컬 좌표에서 오프셋 계산
-        local_offset_x = (forward_ratio - 0.5) * self.grid_width
-        local_offset_y = 0.0
-
-        # 월드 좌표로 변환
-        world_offset_x = local_offset_x * cos_yaw - local_offset_y * sin_yaw
-        world_offset_y = local_offset_x * sin_yaw + local_offset_y * cos_yaw
-
-        # 코스트맵 중심을 오프셋만큼 이동
-        costmap_center_x = robot_x + world_offset_x
-        costmap_center_y = robot_y + world_offset_y
-
-        # 코스트맵 원점 계산 (중심에서 절반씩 이동)
-        origin_x = costmap_center_x - (self.grid_cols * self.grid_resolution) * 0.5
-        origin_y = costmap_center_y - (self.grid_rows * self.grid_resolution) * 0.5
-        self.costmap_origin = (origin_x, origin_y)
-
-        scan = self.latest_scan
-        angle = scan.angle_min
         max_range = min(
             0.5 * math.hypot(self.grid_width, self.grid_height),
             scan.range_max
         )
+        forward_ratio = 0.8
+        local_offset_x = (forward_ratio - 0.5) * self.grid_width
+        local_offset_y = 0.0
+        world_offset_x = local_offset_x * cos_yaw - local_offset_y * sin_yaw
+        world_offset_y = local_offset_x * sin_yaw + local_offset_y * cos_yaw
+        costmap_center_x = robot_x + world_offset_x
+        costmap_center_y = robot_y + world_offset_y
+        origin_x = costmap_center_x - (self.grid_cols * self.grid_resolution) * 0.5
+        origin_y = costmap_center_y - (self.grid_rows * self.grid_resolution) * 0.5
+        self.costmap_origin = (origin_x, origin_y)
 
+        inflation_radius = max(self.inflation_radius, 0.0)
+        if inflation_radius <= 1e-6:
+            inflation_radius = 0.01
+
+        angle = scan.angle_min
         for rng in scan.ranges:
             if not math.isfinite(rng) or rng < scan.range_min or rng > max_range:
                 angle += scan.angle_increment
                 continue
             lx = rng * math.cos(angle)
             ly = rng * math.sin(angle)
-            mx = robot_x + lx * cos_yaw - ly * sin_yaw
-            my = robot_y + lx * sin_yaw + ly * cos_yaw
-            self._mark_occupied(mx, my)
+            obs_x = robot_x + lx * cos_yaw - ly * sin_yaw
+            obs_y = robot_y + lx * sin_yaw + ly * cos_yaw
             angle += scan.angle_increment
 
-        self._inflate_obstacles()
+            indices = self.local_graph_tree.query_ball_point((obs_x, obs_y), inflation_radius)
+            if not indices:
+                continue
+            for idx in indices:
+                node_pos = self.local_graph_positions[idx]
+                dist = math.hypot(obs_x - float(node_pos[0]), obs_y - float(node_pos[1]))
+                if dist > inflation_radius:
+                    continue
+                cost = 1.0 if inflation_radius <= 1e-6 else max(0.0, (inflation_radius - dist) / inflation_radius)
+                if cost > self.local_graph_dynamic_costs[idx]:
+                    self.local_graph_dynamic_costs[idx] = cost
+
         if self.costmap_pub is not None:
-            self._publish_costmap()
+            self._publish_dynamic_costmap()
+
         return True
 
-    def _mark_occupied(self, x: float, y: float) -> None:
-        cell = self._world_to_cell(x, y)
-        if cell is None:
+    def _dynamic_cost_at(self, x: float, y: float) -> float:
+        if self.local_graph_tree is None or self.local_graph_dynamic_costs is None:
+            return 0.0
+        dist, idx = self.local_graph_tree.query((x, y), k=1)
+        if not np.isfinite(dist):
+            return 0.0
+        if dist > self.inflation_radius and self.inflation_radius > 1e-6:
+            return 0.0
+        return float(self.local_graph_dynamic_costs[idx])
+
+    def _publish_dynamic_costmap(self) -> None:
+        if self.costmap_pub is None or self.local_graph_tree is None or self.local_graph_dynamic_costs is None:
             return
-        row, col = cell
-        self.obstacle_grid[row, col] = 255
-
-    def _inflate_obstacles(self) -> None:
-        inflation_cells = int(math.ceil(max(0.0, self.inflation_radius) / self.grid_resolution))
-        if inflation_cells <= 0:
-            return
-
-        obstacle_indices = np.argwhere(self.obstacle_grid == 255)
-        if obstacle_indices.size == 0:
-            return
-
-        for row, col in obstacle_indices:
-            row_min = max(0, row - inflation_cells)
-            row_max = min(self.grid_rows - 1, row + inflation_cells)
-            col_min = max(0, col - inflation_cells)
-            col_max = min(self.grid_cols - 1, col + inflation_cells)
-            for r in range(row_min, row_max + 1):
-                for c in range(col_min, col_max + 1):
-                    if self.obstacle_grid[r, c] == 255:
-                        continue
-                    dr = (r - row) * self.grid_resolution
-                    dc = (c - col) * self.grid_resolution
-                    if math.hypot(dr, dc) <= self.inflation_radius + 1e-6:
-                        self.obstacle_grid[r, c] = max(self.obstacle_grid[r, c], 200)
-
-    def _world_to_cell(self, x: float, y: float) -> Optional[Tuple[int, int]]:
-        origin_x, origin_y = self.costmap_origin
-        col = int(math.floor((x - origin_x) / self.grid_resolution))
-        row = int(math.floor((y - origin_y) / self.grid_resolution))
-        if col < 0 or col >= self.grid_cols or row < 0 or row >= self.grid_rows:
-            return None
-        return row, col
-
-    def _cell_value(self, x: float, y: float) -> float:
-        cell = self._world_to_cell(x, y)
-        if cell is None:
-            return 1.0
-        row, col = cell
-        value = self.obstacle_grid[row, col]
-        if value >= 250:
-            return 1.0
-        if value > 0:
-            return 0.5
-        return 0.0
-
-    def _collision_check(self, state: HybridState, next_state: HybridState) -> bool:
-        # Sample along the transition to detect collisions
-        steps = max(2, int(math.ceil(self.step_size / (self.grid_resolution * 0.5))))
-        for i in range(steps + 1):
-            t = i / steps
-            x = state.x + (next_state.x - state.x) * t
-            y = state.y + (next_state.y - state.y) * t
-            if self._point_in_collision(x, y):
-                return True
-        return False
-
-    def _publish_costmap(self) -> None:
         msg = OccupancyGrid()
         msg.header.frame_id = self.map_frame
         msg.header.stamp = self.get_clock().now().to_msg()
@@ -816,40 +861,31 @@ class HybridAStarLocalPlanner(Node):
         msg.info.origin.position.z = 0.0
         msg.info.origin.orientation.w = 1.0
 
-        grid = self.obstacle_grid
-        costmap_view = np.full(grid.shape, -1, dtype=np.int8)
-        costmap_view[grid >= 250] = 100  # occupied
-        inflated_mask = (grid > 0) & (grid < 250)
-        costmap_view[inflated_mask] = 70  # inflated but free-ish
-        msg.data = [int(v) for v in costmap_view.flatten(order='C')]
+        data: List[int] = []
+        origin_x, origin_y = self.costmap_origin
+        for row in range(self.grid_rows):
+            y = origin_y + (row + 0.5) * self.grid_resolution
+            for col in range(self.grid_cols):
+                x = origin_x + (col + 0.5) * self.grid_resolution
+                cost = self._dynamic_cost_at(x, y)
+                if cost >= self.dynamic_obstacle_threshold:
+                    data.append(100)
+                elif cost <= 0.0:
+                    data.append(0)
+                else:
+                    data.append(int(70 * cost))
+
+        msg.data = data
         self.costmap_pub.publish(msg)
 
-    def _point_in_collision(self, x: float, y: float) -> bool:
-        """동적 장애물(LiDAR) 충돌 체크 - 코스트맵 범위 내에서만"""
-        # 코스트맵이 업데이트되지 않았으면 충돌 없음
-        if self.costmap_origin is None:
-            return False
-
-        origin_x, origin_y = self.costmap_origin
-        col_f = (x - origin_x) / self.grid_resolution
-        row_f = (y - origin_y) / self.grid_resolution
-        col = int(math.floor(col_f))
-        row = int(math.floor(row_f))
-        vehicle_cells = int(math.ceil(self.vehicle_radius / self.grid_resolution))
-
-        for r in range(row - vehicle_cells, row + vehicle_cells + 1):
-            # 코스트맵 범위 밖은 무시 (정적 맵에서만 체크)
-            if r < 0 or r >= self.grid_rows:
-                continue
-            for c in range(col - vehicle_cells, col + vehicle_cells + 1):
-                # 코스트맵 범위 밖은 무시 (정적 맵에서만 체크)
-                if c < 0 or c >= self.grid_cols:
-                    continue
-                if self.obstacle_grid[r, c] > 0:
-                    center_x = (c + 0.5) * self.grid_resolution + origin_x
-                    center_y = (r + 0.5) * self.grid_resolution + origin_y
-                    if math.hypot(center_x - x, center_y - y) <= self.vehicle_radius:
-                        return True
+    def _collision_check(self, state: HybridState, next_state: HybridState) -> bool:
+        steps = max(2, int(math.ceil(self.step_size / max(self.graph_collision_step, 1e-3))))
+        for i in range(steps + 1):
+            t = i / steps
+            x = state.x + (next_state.x - state.x) * t
+            y = state.y + (next_state.y - state.y) * t
+            if self._dynamic_cost_at(x, y) >= self.dynamic_obstacle_threshold:
+                return True
         return False
 
     # --------------------------------------------------------------------- #
@@ -1113,7 +1149,7 @@ class HybridAStarLocalPlanner(Node):
                     continue
 
                 # 동적 장애물 페널티 (LiDAR)
-                obstacle_penalty = self.obstacle_cost_weight * self._cell_value(next_state.x, next_state.y)
+                obstacle_penalty = self.obstacle_cost_weight * self._dynamic_cost_at(next_state.x, next_state.y)
 
                 # 조향 변화 페널티
                 steering_penalty = self.steering_change_weight * abs(next_state.steering - current_state.steering)

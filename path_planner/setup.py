@@ -19,6 +19,7 @@ setup(
     install_requires=[
         'setuptools',
         'numpy>=1.21,<1.24',
+        'scipy>=1.7,<1.12',
         'scikit-image>=0.18,<0.22',
         'filterpy',
     ],

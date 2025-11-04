@@ -66,6 +66,8 @@ local_planner:
     global_path_deviation_weight: 8.0
     # 정적 맵 외곽 페널티, 트랙 밖으로 못 나가게 강제 (최우선)
     static_map_penalty_weight: 20.0
+    # 동적 장애물 감지 임계값 (그래프 기반), 0~1 범위
+    dynamic_obstacle_threshold: 0.7
 
     # Precomputed local graph visualization
     local_graph_enabled: true
