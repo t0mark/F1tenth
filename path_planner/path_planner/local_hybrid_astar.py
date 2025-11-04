@@ -74,6 +74,9 @@ class HybridAStarLocalPlanner(Node):
         self.declare_parameter('graph_yaw_weight', 1.5)
         self.declare_parameter('graph_goal_tolerance', 0.5)
         self.declare_parameter('dynamic_obstacle_threshold', 0.7)
+        self.declare_parameter('dynamic_cost_neighbor_count', 12)
+        self.declare_parameter('dynamic_cost_forward_extra', 6)
+        self.declare_parameter('dynamic_cost_forward_yaw_tol', 0.78539816339)  # 45 deg
 
         # Parameter retrieval
         self.global_path_topic = self.get_parameter('global_path_topic').get_parameter_value().string_value
@@ -110,6 +113,9 @@ class HybridAStarLocalPlanner(Node):
         self.graph_yaw_weight = max(1e-3, float(self.get_parameter('graph_yaw_weight').value))
         self.graph_goal_tolerance = max(0.05, float(self.get_parameter('graph_goal_tolerance').value))
         self.dynamic_obstacle_threshold = float(self.get_parameter('dynamic_obstacle_threshold').value)
+        self.dynamic_cost_neighbor_count = max(1, int(self.get_parameter('dynamic_cost_neighbor_count').value))
+        self.dynamic_cost_forward_extra = max(0, int(self.get_parameter('dynamic_cost_forward_extra').value))
+        self.dynamic_cost_forward_yaw_tol = max(1e-3, float(self.get_parameter('dynamic_cost_forward_yaw_tol').value))
 
         # Runtime state
         self.global_path_np: Optional[np.ndarray] = None  # shape (N, 3) for x, y, yaw
@@ -709,28 +715,70 @@ class HybridAStarLocalPlanner(Node):
 
         # 배치 KNN 쿼리 (벡터화)
         obstacle_array = np.array(obstacle_points, dtype=np.float32)
-        neighbor_lists = self.local_graph_tree.query_ball_point(obstacle_array, r=inflation_radius)
-
         graph_positions = self.local_graph_positions
         dynamic_costs = self.local_graph_dynamic_costs
-        if dynamic_costs is None:
+        if dynamic_costs is None or graph_positions is None:
             return False
 
-        # 각 장애물 포인트에 대해 반경 내 모든 노드 업데이트
-        for obs_point, neighbour_ids in zip(obstacle_array, neighbor_lists):
-            if not neighbour_ids:
+        node_count = graph_positions.shape[0]
+        k_query = min(
+            node_count,
+            self.dynamic_cost_neighbor_count + self.dynamic_cost_forward_extra
+        )
+        if k_query <= 0:
+            return True
+
+        robot_node_idx = self._graph_match_pose(
+            robot_x,
+            robot_y,
+            robot_yaw,
+            max_distance=self.graph_match_max_distance * 2.0
+        )
+
+        distances, indices = self.local_graph_tree.query(obstacle_array, k=k_query)
+        if k_query == 1:
+            distances = distances[:, np.newaxis]
+            indices = indices[:, np.newaxis]
+
+        base_count = min(self.dynamic_cost_neighbor_count, k_query)
+
+        node_yaws = self.local_graph_yaws if self.local_graph_yaws is not None else None
+
+        # 각 장애물 포인트에 대해 선택된 k개의 이웃 노드 업데이트
+        for obs_dists, obs_indices in zip(distances, indices):
+            if obs_indices.size == 0:
                 continue
-            neighbour_ids = np.asarray(neighbour_ids, dtype=np.int32)
-            diffs = graph_positions[neighbour_ids] - obs_point
-            dists = np.linalg.norm(diffs, axis=1)
-            # 0 division 방지를 위해 clip
-            valid = np.isfinite(dists)
-            if not np.any(valid):
+            valid_mask = np.isfinite(obs_dists)
+            if not np.any(valid_mask):
                 continue
-            dists = dists[valid]
-            ids = neighbour_ids[valid]
-            costs = np.maximum(0.0, (inflation_radius - dists) / inflation_radius)
-            np.maximum.at(dynamic_costs, ids, costs)
+            obs_dists = obs_dists[valid_mask]
+            obs_indices = obs_indices[valid_mask].astype(np.int32, copy=False)
+            within = obs_dists <= inflation_radius
+            if not np.any(within):
+                continue
+            within_indices = np.nonzero(within)[0]
+
+            selected_idx = obs_indices[within_indices[:base_count]]
+            selected_dist = obs_dists[within_indices[:base_count]]
+
+            # Forward-direction bonus selection
+            if robot_node_idx is not None and node_yaws is not None and within_indices.size > base_count:
+                extra_candidates = within_indices[base_count:]
+                if extra_candidates.size > 0:
+                    candidate_indices = obs_indices[extra_candidates]
+                    forward_mask = (
+                        (candidate_indices > robot_node_idx)
+                        & (np.abs(wrap_angle(node_yaws[candidate_indices] - robot_yaw)) <= self.dynamic_cost_forward_yaw_tol)
+                    )
+                    if np.any(forward_mask):
+                        selected_idx = np.concatenate((selected_idx, candidate_indices[forward_mask]))
+                        selected_dist = np.concatenate((selected_dist, obs_dists[extra_candidates[forward_mask]]))
+
+            if selected_idx.size == 0:
+                continue
+
+            costs = np.maximum(0.0, (inflation_radius - selected_dist) / inflation_radius)
+            np.maximum.at(dynamic_costs, selected_idx, costs)
 
         return True
 

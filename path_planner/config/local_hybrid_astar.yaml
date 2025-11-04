@@ -48,6 +48,12 @@ local_planner:
     static_map_penalty_weight: 20.0
     # 동적 장애물 감지 임계값 (그래프 기반), 0~1 범위
     dynamic_obstacle_threshold: 0.7
+    # LiDAR 코스트를 전파할 주변 그래프 노드 수
+    dynamic_cost_neighbor_count: 8
+    # 전방(인덱스 증가 & 동일 방향) 우선 추가 노드 수
+    dynamic_cost_forward_extra: 3
+    # 전방 보너스 판단 기준 (rad)
+    dynamic_cost_forward_yaw_tol: 0.78539816339
 
     # Precomputed local graph visualization
     local_graph_enabled: true
