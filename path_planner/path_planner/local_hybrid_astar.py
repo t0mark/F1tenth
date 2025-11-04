@@ -137,7 +137,7 @@ class HybridAStarLocalPlanner(Node):
         # Derived costmap sizes
         self.grid_cols = max(3, int(math.ceil(self.grid_width / self.grid_resolution)))
         self.grid_rows = max(3, int(math.ceil(self.grid_height / self.grid_resolution)))
-        self.obstacle_grid = None
+        self.obstacle_grid = np.zeros((self.grid_rows, self.grid_cols), dtype=np.uint8)
 
         # Runtime state
         self.global_path_np: Optional[np.ndarray] = None  # shape (N, 3) for x, y, yaw
@@ -476,8 +476,11 @@ class HybridAStarLocalPlanner(Node):
             ).astype(np.float32)
         else:
             self.local_graph_wall_costs = np.zeros_like(self.local_graph_s_values, dtype=np.float32)
-        if self.local_graph_curvatures is not None:
-            self.local_graph_curvature_costs = (curvature_weight * np.abs(self.local_graph_curvatures)).astype(np.float32)
+        if self.local_graph_curvatures is not None and self.local_graph_lateral_offsets is not None:
+            self.local_graph_curvature_costs = (
+                curvature_weight
+                * np.maximum(0.0, -self.local_graph_curvatures * self.local_graph_lateral_offsets)
+            ).astype(np.float32)
         else:
             self.local_graph_curvature_costs = np.zeros_like(self.local_graph_s_values, dtype=np.float32)
         self.local_graph_total_costs = (
@@ -857,6 +860,19 @@ class HybridAStarLocalPlanner(Node):
         if dist > self.inflation_radius and self.inflation_radius > 1e-6:
             return 0.0
         return float(self.local_graph_dynamic_costs[idx])
+
+    def _point_in_collision(self, x: float, y: float) -> bool:
+        if self.dynamic_obstacle_threshold <= 0.0:
+            return False
+        return self._dynamic_cost_at(x, y) >= self.dynamic_obstacle_threshold
+
+    def _world_to_cell(self, x: float, y: float) -> Optional[Tuple[int, int]]:
+        origin_x, origin_y = self.costmap_origin
+        col = int(math.floor((x - origin_x) / self.grid_resolution))
+        row = int(math.floor((y - origin_y) / self.grid_resolution))
+        if col < 0 or col >= self.grid_cols or row < 0 or row >= self.grid_rows:
+            return None
+        return row, col
 
     def _publish_dynamic_costmap(self) -> None:
         if self.costmap_pub is None or self.local_graph_tree is None or self.local_graph_dynamic_costs is None:

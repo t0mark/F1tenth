@@ -121,7 +121,7 @@ def generate_launch_description():
 
     # 3. Path Sampler (CSV-based) - localization 이후 2초 지연
     path_sampler_launch = TimerAction(
-        period=2.0,
+        period=4.0,
         actions=[
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
@@ -142,7 +142,7 @@ def generate_launch_description():
 
     # 4. Control - 경로 플래너 이후 2초 지연
     control_launch = TimerAction(
-        period=2.0,
+        period=6.0,
         actions=[
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(

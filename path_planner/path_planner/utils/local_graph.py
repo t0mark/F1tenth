@@ -346,9 +346,9 @@ def build_graph(
             biased_offsets[s_idx_b, lat_idx_b] - biased_offsets[s_idx_a, lat_idx_a]
         )
         heading_delta = abs(head_offsets[head_idx_b] - head_offsets[head_idx_a])
-        curvature_penalty = curvature_cost_weight * 0.5 * (
-            abs(curvature[s_idx_a]) + abs(curvature[s_idx_b])
-        )
+        inner_a = max(0.0, curvature[s_idx_a] * biased_offsets[s_idx_a, lat_idx_a])
+        inner_b = max(0.0, curvature[s_idx_b] * biased_offsets[s_idx_b, lat_idx_b])
+        curvature_penalty = curvature_cost_weight * 0.5 * (inner_a + inner_b)
         weight = 1.0 + lateral_weight * lateral_delta + heading_weight * heading_delta + curvature_penalty
         edges_from.append(a)
         edges_to.append(b)
@@ -675,17 +675,18 @@ def main() -> None:
             'curvature_cost',
             'total_cost',
         ])
-        for (s_idx, lat_idx, head_idx), pos, wall_dist, curv in zip(
+        for (s_idx, lat_idx, head_idx), pos, wall_dist, curv, lat_off in zip(
             graph.node_indices,
             graph.node_positions,
             graph.node_wall_distances,
             graph.node_curvatures,
+            graph.node_lateral_offsets,
         ):
             if wall_thresh > 1e-6:
                 wall_cost = max(0.0, min(1.0, (wall_thresh - wall_dist) / wall_thresh))
             else:
                 wall_cost = 0.0
-            curvature_cost = curvature_weight * abs(curv)
+            curvature_cost = curvature_weight * max(0.0, curv * lat_off)
             total_cost = wall_cost + curvature_cost
             writer.writerow([
                 int(s_idx),
