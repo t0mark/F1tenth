@@ -690,11 +690,6 @@ class HybridAStarLocalPlanner(Node):
         if inflation_radius <= 1e-6:
             inflation_radius = 0.01
 
-        # KNN 근사: inflation_radius 내 예상 최대 노드 수 추정
-        # 그래프 밀도 기준: s_step=0.2m, lateral_spacing=0.15m
-        # 원 면적 / 노드 면적 = π*r² / (0.2*0.15) ≈ 26*r² (r=0.25일 때 ~1.6개)
-        k_neighbors = max(3, int(26.0 * inflation_radius * inflation_radius))
-
         # LiDAR 빔 좌표 변환 및 배치 처리
         obstacle_points = []
         angle = scan.angle_min
@@ -714,16 +709,28 @@ class HybridAStarLocalPlanner(Node):
 
         # 배치 KNN 쿼리 (벡터화)
         obstacle_array = np.array(obstacle_points, dtype=np.float32)
-        distances, indices = self.local_graph_tree.query(obstacle_array, k=k_neighbors)
+        neighbor_lists = self.local_graph_tree.query_ball_point(obstacle_array, r=inflation_radius)
 
-        # 각 장애물 포인트에 대해 영향 노드 업데이트
-        for obs_dists, obs_indices in zip(distances, indices):
-            for dist, idx in zip(obs_dists, obs_indices):
-                if dist > inflation_radius:
-                    continue  # inflation_radius 밖은 무시
-                cost = max(0.0, (inflation_radius - dist) / inflation_radius)
-                if cost > self.local_graph_dynamic_costs[idx]:
-                    self.local_graph_dynamic_costs[idx] = cost
+        graph_positions = self.local_graph_positions
+        dynamic_costs = self.local_graph_dynamic_costs
+        if dynamic_costs is None:
+            return False
+
+        # 각 장애물 포인트에 대해 반경 내 모든 노드 업데이트
+        for obs_point, neighbour_ids in zip(obstacle_array, neighbor_lists):
+            if not neighbour_ids:
+                continue
+            neighbour_ids = np.asarray(neighbour_ids, dtype=np.int32)
+            diffs = graph_positions[neighbour_ids] - obs_point
+            dists = np.linalg.norm(diffs, axis=1)
+            # 0 division 방지를 위해 clip
+            valid = np.isfinite(dists)
+            if not np.any(valid):
+                continue
+            dists = dists[valid]
+            ids = neighbour_ids[valid]
+            costs = np.maximum(0.0, (inflation_radius - dists) / inflation_radius)
+            np.maximum.at(dynamic_costs, ids, costs)
 
         return True
 
