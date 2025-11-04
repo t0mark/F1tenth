@@ -572,31 +572,6 @@ class HybridAStarLocalPlanner(Node):
             return None
         return best_idx
 
-    def _graph_edge_blocked(self, src_id: int, dst_id: int) -> Tuple[bool, float]:
-        if self.local_graph_positions is None:
-            return True, 1.0
-
-        start = self.local_graph_positions[src_id]
-        end = self.local_graph_positions[dst_id]
-        distance = math.hypot(float(end[0] - start[0]), float(end[1] - start[1]))
-        if distance < 1e-6:
-            return False, 0.0
-
-        step = max(self.graph_collision_step, 0.02)
-        steps = max(2, int(math.ceil(distance / step)))
-        max_cell_cost = 0.0
-
-        for i in range(steps + 1):
-            t = i / steps
-            x = float(start[0] + (end[0] - start[0]) * t)
-            y = float(start[1] + (end[1] - start[1]) * t)
-
-            dyn_cost = self._dynamic_cost_at(x, y)
-            if dyn_cost >= self.dynamic_obstacle_threshold:
-                return True, dyn_cost
-            max_cell_cost = max(max_cell_cost, dyn_cost)
-
-        return False, max_cell_cost
 
     def _graph_heuristic(self, node_id: int, goal_pos: np.ndarray, goal_yaw: float) -> float:
         if self.local_graph_positions is None or self.local_graph_yaws is None:
@@ -690,9 +665,14 @@ class HybridAStarLocalPlanner(Node):
 
             for neigh_id, base_cost in zip(neighbor_ids, neighbor_costs):
                 edges_checked += 1
-                blocked, obstacle_factor = self._graph_edge_blocked(current_id, int(neigh_id))
-                if blocked:
-                    continue
+
+                # 목적지 노드의 동적 장애물 비용 체크 (엣지 샘플링 제거)
+                if self.local_graph_dynamic_costs is not None:
+                    node_obstacle_cost = float(self.local_graph_dynamic_costs[int(neigh_id)])
+                    if node_obstacle_cost >= self.dynamic_obstacle_threshold:
+                        continue  # 목적지 노드가 장애물에 막힘
+                else:
+                    node_obstacle_cost = 0.0
 
                 neighbour_pos = self.local_graph_positions[int(neigh_id)]
                 yaw_penalty = self.steering_change_weight * abs(
@@ -706,7 +686,7 @@ class HybridAStarLocalPlanner(Node):
                     float(neighbour_pos[0]),
                     float(neighbour_pos[1])
                 )
-                obstacle_penalty = self.obstacle_cost_weight * obstacle_factor
+                obstacle_penalty = self.obstacle_cost_weight * node_obstacle_cost
 
                 tentative_g = current_g + float(base_cost) + yaw_penalty + path_penalty + map_penalty + obstacle_penalty
 

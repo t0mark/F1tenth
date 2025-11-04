@@ -21,8 +21,8 @@ local_planner:
     grid_width: 7.0
     # 관측 창 높이 (m), 로봇 중심 기준
     grid_height: 7.0
-    # 장애물 팽창 반경 (m), 안전 마진 확보
-    inflation_radius: 0.05
+    # 장애물 팽창 반경 (m), 차량 반경 + 그래프 간격 커버
+    inflation_radius: 0.25
 
     # Planner configuration
     # 목표점 거리 (m), 글로벌 경로에서 앞쪽 몇 m 지점을 목표로 삼을지
