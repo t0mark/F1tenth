@@ -1,10 +1,3 @@
-<div style="text-align: center;">
-  <div style="margin-bottom: 10px;">
-    <img src="img/avoidance.png" width="100%">
-    <p>회피 경로</p>
-  </div>
-</div>
-
 # 🏁 F1TENTH ROS2 Workspace
 
 F1TENTH 자율주행 레이싱 시뮬레이션 환경
@@ -76,7 +69,7 @@ rosdep install -i --from-path src --rosdistro humble -y
 
 ### 실제 로봇 연결
 ```bash
-# F1TENTH 로봇 연결 (VESC, 센서 등)
+# F1TENTH 로봇 연결
 ros2 launch f1tenth hardware_launch.py
 
 # RealSense 카메라 실행
@@ -95,9 +88,11 @@ ros2 launch f1tenth full_system_launch.py
 ros2 launch path_planner checkpoint_recorder_launch.py
 ```
 
-### 키보드 제어
+### 로컬 영역 계산
 ```bash
-ros2 run teleop_twist_keyboard teleop_twist_keyboard
+ros2 run path_planner local_graph \
+  --lateral-count 8 \
+  --heading-count 5
 ```
 
 ## 🔗 주요 토픽
@@ -111,15 +106,3 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 | `/drive` | AckermannDriveStamped | 차량 제어 명령 |
 
 ## 📂 디렉토리 구조
-
-```
-src/
-├── simulator/         # 시뮬레이터 브리지
-│   ├── config/        # 맵, 파라미터
-│   └── urdf/          # 차량 모델
-├── path_planner/      # 경로 계획
-│   ├── config/        # 플래너 설정
-│   └── data/          # 체크포인트
-└── control/           # 차량 제어
-    └── config/        # 제어 파라미터
-```
