@@ -61,7 +61,6 @@ class HybridAStarLocalPlanner(Node):
         self.declare_parameter('curvature_heuristic_weight', 15.0)
         self.declare_parameter('wall_distance_heuristic_weight', 10.0)
         self.declare_parameter('dynamic_obstacle_threshold', 0.7)
-        self.declare_parameter('diamond_propagation_radius', 3)
 
         # Graph parameters
         self.declare_parameter('local_graph_enabled', True)
@@ -96,7 +95,6 @@ class HybridAStarLocalPlanner(Node):
         self.curvature_heuristic_weight = float(self.get_parameter('curvature_heuristic_weight').value)
         self.wall_distance_heuristic_weight = float(self.get_parameter('wall_distance_heuristic_weight').value)
         self.dynamic_obstacle_threshold = float(self.get_parameter('dynamic_obstacle_threshold').value)
-        self.diamond_propagation_radius = max(1, int(self.get_parameter('diamond_propagation_radius').value))
 
         self.local_graph_enabled = bool(self.get_parameter('local_graph_enabled').value)
         self.local_graph_prefix = self.get_parameter('local_graph_prefix').get_parameter_value().string_value
@@ -154,7 +152,8 @@ class HybridAStarLocalPlanner(Node):
 
         self.get_logger().info(
             'Hybrid A* local planner 초기화 완료 '
-            f'(diamond propagation radius: {self.diamond_propagation_radius})'
+            f'(inflation_radius: {self.inflation_radius:.2f}m, '
+            f'obstacle_cost_weight: {self.obstacle_cost_weight:.1f})'
         )
 
     # --------------------------------------------------------------------- #
@@ -688,41 +687,43 @@ class HybridAStarLocalPlanner(Node):
 
     def _propagate_diamond_cost(self, seed_nodes: set) -> None:
         """
-        시드 노드들로부터 마름모 모양으로 코스트 전파
-        맨해튼 거리 기반으로 diamond_propagation_radius 이내의 노드에 전파
+        시드 노드들로부터 마름모/원형으로 코스트 전파 (월드 좌표 기반)
+        inflation_radius 거리 이내의 모든 노드에 전파
         """
-        if self.local_graph_indices is None or self.local_graph_dynamic_costs is None:
+        if (
+            self.local_graph_positions is None
+            or self.local_graph_dynamic_costs is None
+            or self.local_graph_tree is None
+        ):
             return
 
-        # 각 노드의 (s_idx, lat_idx, head_idx) 정보 추출
-        node_count = len(self.local_graph_indices)
-
-        # 시드 노드에서 시작하여 BFS로 마름모 영역 탐색
-        visited = set()
+        # 각 시드 노드 주변의 노드들을 KDTree로 빠르게 검색
         for seed_node in seed_nodes:
-            if seed_node >= node_count:
+            if seed_node >= len(self.local_graph_positions):
                 continue
 
-            seed_s, seed_lat, seed_head = self.local_graph_indices[seed_node]
+            seed_pos = self.local_graph_positions[seed_node]
 
-            # 마름모 영역 내의 모든 노드에 코스트 전파
-            for node_id in range(node_count):
-                if node_id in visited:
-                    continue
+            # KDTree로 inflation_radius 이내의 모든 노드 검색
+            # 마름모 대신 원형 영역 사용 (더 자연스러운 장애물 회피)
+            indices = self.local_graph_tree.query_ball_point(
+                seed_pos,
+                r=self.inflation_radius,
+                return_sorted=False
+            )
 
-                node_s, node_lat, node_head = self.local_graph_indices[node_id]
+            # 거리 기반 코스트 감쇠
+            for node_id in indices:
+                node_pos = self.local_graph_positions[node_id]
+                dist = np.linalg.norm(seed_pos - node_pos)
 
-                # 맨해튼 거리 계산 (s, lat 인덱스 기준)
-                manhattan_dist = abs(node_s - seed_s) + abs(node_lat - seed_lat)
-
-                if manhattan_dist <= self.diamond_propagation_radius:
-                    # 거리에 따라 코스트 감쇠
-                    cost = max(0.0, 1.0 - float(manhattan_dist) / float(self.diamond_propagation_radius + 1))
+                # 거리에 따라 선형 감쇠
+                if dist < self.inflation_radius:
+                    cost = 1.0 - (dist / self.inflation_radius)
                     self.local_graph_dynamic_costs[node_id] = max(
                         self.local_graph_dynamic_costs[node_id],
                         cost
                     )
-                    visited.add(node_id)
 
         return
 
