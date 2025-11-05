@@ -134,7 +134,7 @@ Visualization Manager:
       Enabled: true
       Name: Obstacles
       Namespaces:
-        dynamic_obstacles: true
+        {}
       Topic:
         Depth: 5
         Durability Policy: Transient Local
@@ -166,8 +166,8 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 10.412872314453125
-        Min Value: -3.992281913757324
+        Max Value: 10.513408660888672
+        Min Value: -4.009588718414307
         Value: true
       Axis: X
       Channel Name: intensity
@@ -404,25 +404,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 6.0891432762146
+      Distance: 23.723155975341797
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 0.4607524573802948
-        Y: -0.3067674934864044
-        Z: 2.3000097274780273
+        X: 0.28010186553001404
+        Y: 0.16647307574748993
+        Z: 2.288590431213379
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.2247967720031738
+      Pitch: 1.5047965049743652
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 3.1131787300109863
+      Yaw: 3.158179759979248
     Saved: ~
 Window Geometry:
   Displays:

@@ -16,13 +16,13 @@ local_planner:
     base_frame: 'base_link'
 
     # 장애물 팽창 반경 (m) - LiDAR 장애물 주변으로 코스트 전파할 반경 (월드 좌표)
-    inflation_radius: 0.5
+    inflation_radius: 0.7
 
     # Planner configuration
     # 목표점 거리 (m), 글로벌 경로에서 앞쪽 몇 m 지점을 목표로 삼을지
-    lookahead_distance: 5.0
+    lookahead_distance: 8.0
     # 플래너 실행 주기 (Hz)
-    planner_hz: 50.0
+    planner_hz: 100.0
     # A* 최대 반복 횟수 (늘리면 더 복잡한 경로 탐색 가능)
     max_iterations: 3000
 
@@ -31,10 +31,10 @@ local_planner:
 
     # 조향 변화 페널티 (부드러운 주행)
     steering_change_weight: 1.5
-    # 동적 장애물 페널티 (LiDAR 기반) - 강하지만 경로 찾을 수 있게 조정
-    obstacle_cost_weight: 30.0
-    # 글로벌 경로 이탈 페널티 - 적당히 유지 (완전히 벗어나면 안됨)
-    path_distance_weight: 2.5
+    # 동적 장애물 페널티 (LiDAR 기반) - 조기 회피를 위해 강화
+    obstacle_cost_weight: 60.0
+    # 글로벌 경로 이탈 페널티 - 장애물 회피 시 이탈 허용
+    path_distance_weight: 1.8
     # 목표점 거리 가중치
     heuristic_weight: 1.0
     # 곡률 기반 휴리스틱 가중치 (바깥쪽 선호, 안쪽 페널티)
@@ -42,7 +42,7 @@ local_planner:
     # 벽 거리 기반 휴리스틱 가중치 (낮게 설정 - 조금 박아도 됨)
     wall_distance_heuristic_weight: 2.0
     # 동적 장애물 감지 임계값 (코스트가 이 값 이상이면 노드 차단)
-    dynamic_obstacle_threshold: 0.6
+    dynamic_obstacle_threshold: 0.5
 
     # Precomputed local graph
     local_graph_enabled: true

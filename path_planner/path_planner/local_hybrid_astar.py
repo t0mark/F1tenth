@@ -512,11 +512,11 @@ class HybridAStarLocalPlanner(Node):
             # lateral_offset > 0: 오른쪽
             # 안쪽에 높은 페널티 (curvature * lateral_offset < 0이면 안쪽)
             if curvature * lateral_offset < 0:
-                # 안쪽 - 높은 페널티
-                curvature_heuristic = abs(curvature * lateral_offset) * 3.0
+                # 안쪽 - 매우 높은 페널티 (강화)
+                curvature_heuristic = abs(curvature * lateral_offset) * 5.0
             else:
-                # 바깥쪽 - 낮은 페널티 (보너스)
-                curvature_heuristic = -abs(curvature * lateral_offset) * 0.5
+                # 바깥쪽 - 낮은 휴리스틱 (보너스 강화)
+                curvature_heuristic = -abs(curvature * lateral_offset) * 1.0
 
         return (
             self.heuristic_weight * distance
