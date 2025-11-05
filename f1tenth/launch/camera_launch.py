@@ -28,10 +28,10 @@ def generate_launch_description():
             ])
         ]),
         launch_arguments={
+            'enable_color': 'false',
+            'enable_depth': 'false',
             'enable_gyro': 'true',
-            'enable_accel': 'true',
-            'unite_imu_method': '1',
-            'base_frame_id': 'base_link'
+            'enable_accel': 'true'
         }.items()
     )
 
