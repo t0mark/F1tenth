@@ -30,11 +30,14 @@ cd gym && pip install -e .
 
 ### 의존성
 ```bash
-pip install numpy scikit-image opencv-python PyYAML gymnasium transforms3d
+pip install numpy==1.26 scikit-image opencv-python PyYAML gymnasium transforms3d
 
-sudo apt install ros-humble-librealsense2*
-sudo apt install ros-humble-realsense2-*
-sudo apt install ros-humble-cartographer ros-humble-cartographer-ros
+sudo apt install ros-humble-librealsense2* \
+  ros-humble-realsense2-* \
+  ros-humble-cartographer ros-humble-cartographer-ros \
+  ros-humble-nav2-map-server \
+  ros-humble-nav2-lifecycle-manager \
+  ros-humble-ackermann-msgs
 ```
 
 ### 4. ROS2 패키지 빌드
