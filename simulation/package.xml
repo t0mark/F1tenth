@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <!-- 패키지 기본 정보 -->
-  <name>simulator</name>
+  <name>simulation</name>
   <version>0.0.0</version>
   <description>F1TENTH Simulation Environment Bridge for ROS2</description>
   <maintainer email="billyzheng.bz@gmail.com">Billy Zheng</maintainer>

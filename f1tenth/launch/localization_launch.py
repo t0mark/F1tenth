@@ -7,12 +7,11 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
-    pkg_share = get_package_share_directory('localization')
+    pkg_share = get_package_share_directory('f1tenth')
 
     # 설정 파일 경로
-    amcl_config = os.path.join(pkg_share, 'config', 'amcl.yaml')
+    amcl_config = os.path.join(pkg_share, 'config', 'localization', 'amcl.yaml')
     ekf_launch_file = os.path.join(pkg_share, 'launch', 'ekf_launch.py')
-    tf_to_odom_script = os.path.join(pkg_share, 'scripts', 'tf_to_odom.py')
 
     return LaunchDescription([
         # 시뮬레이션 시간 사용 여부
@@ -42,8 +41,8 @@ def generate_launch_description():
 
         # TF to Odometry 노드 - map->base_link를 odometry로 발행
         Node(
-            package='localization',
-            executable='tf_to_odom.py',
+            package='f1tenth',
+            executable='tf_to_odom_node',
             name='tf_to_odom_node',
             output='screen',
             parameters=[

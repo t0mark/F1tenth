@@ -8,8 +8,8 @@ from ament_index_python.packages import get_package_share_directory
 
 
 def generate_launch_description():
-    pkg_share = get_package_share_directory('localization')
-    ekf_config = os.path.join(pkg_share, 'config', 'ekf.yaml')
+    pkg_share = get_package_share_directory('f1tenth')
+    ekf_config = os.path.join(pkg_share, 'config', 'localization', 'ekf.yaml')
 
     return LaunchDescription([
         DeclareLaunchArgument(

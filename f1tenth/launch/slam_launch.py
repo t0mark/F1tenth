@@ -13,11 +13,11 @@ LOGGER = launch_logging.get_logger('mapping_launch')
 
 def generate_launch_description():
     slam_config = os.path.join(
-        get_package_share_directory('mapping'), 'config', 'slam_toolbox.yaml')
+        get_package_share_directory('f1tenth'), 'config', 'mapping', 'slam_toolbox.yaml')
     rviz_config = os.path.join(
-        get_package_share_directory('mapping'), 'rviz', 'map.rviz')
+        get_package_share_directory('f1tenth'), 'rviz', 'map.rviz')
     localization_launch = os.path.join(
-        get_package_share_directory('localization'), 'launch', 'ekf_launch.py')
+        get_package_share_directory('f1tenth'), 'launch', 'ekf_launch.py')
 
     use_sim_time_argument = DeclareLaunchArgument(
         'use_sim_time',

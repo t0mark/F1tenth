@@ -95,9 +95,9 @@ def generate_launch_description():
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     PathJoinSubstitution([
-                        FindPackageShare('localization'),
+                        FindPackageShare('f1tenth'),
                         'launch',
-                        'amcl_launch.py'
+                        'localization_launch.py'
                     ])
                 ),
                 launch_arguments={
@@ -126,7 +126,7 @@ def generate_launch_description():
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     PathJoinSubstitution([
-                        FindPackageShare('path_planner'),
+                        FindPackageShare('f1tenth'),
                         'launch',
                         'path_planner_launch.py'
                     ])
@@ -147,9 +147,9 @@ def generate_launch_description():
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     PathJoinSubstitution([
-                        FindPackageShare('control'),
+                        FindPackageShare('f1tenth'),
                         'launch',
-                        'pure_pursuit_launch.py'
+                        'control_launch.py'
                     ])
                 ),
                 launch_arguments={

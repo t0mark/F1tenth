@@ -21,9 +21,9 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     """Create launch description for checkpoint recorder node."""
-    pkg_share = get_package_share_directory('path_planner')
+    pkg_share = get_package_share_directory('f1tenth')
     workspace_root = os.path.abspath(os.path.join(pkg_share, '..', '..', '..', '..'))
-    src_base = os.path.join(workspace_root, 'src', 'path_planner', 'path_planner')
+    src_base = os.path.join(workspace_root, 'src', 'f1tenth')
     if os.path.isdir(os.path.join(workspace_root, 'src')):
         default_csv_path = os.path.join(src_base, 'data', 'checkpoints.csv')
     else:
@@ -31,7 +31,7 @@ def generate_launch_description():
     simulator_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
-                get_package_share_directory('simulator'),
+                get_package_share_directory('simulation'),
                 'launch',
                 'gym_bridge_launch.py'
             )
@@ -66,7 +66,7 @@ def generate_launch_description():
         ),
         simulator_launch,
         Node(
-            package='path_planner',
+            package='f1tenth',
             executable='checkpoint_recorder_node',
             name='checkpoint_recorder_node',
             emulate_tty=True,

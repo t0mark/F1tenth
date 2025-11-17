@@ -111,7 +111,7 @@ def main():
     print("=" * 60)
 
     # 입력 파일 경로 (pre_checkpoints.csv)
-    input_file = os.path.join('src/path_planner/path_planner/data', 'pre_checkpoints.csv')
+    input_file = os.path.join('src/f1tenth/data', 'pre_checkpoints.csv')
 
     # 파일 존재 여부 확인
     if not os.path.exists(input_file):
@@ -134,7 +134,7 @@ def main():
     )
 
     # 출력 디렉토리 설정
-    output_dir = os.path.join('src/path_planner/path_planner/data')
+    output_dir = os.path.join('src/f1tenth/data')
     os.makedirs(output_dir, exist_ok=True)
 
     # checkpoints.csv 저장

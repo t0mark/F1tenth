@@ -31,8 +31,8 @@ def generate_launch_description():
     smooth_arg = DeclareLaunchArgument('steer_smooth_alpha', default_value='0.3')
 
     node = Node(
-        package='control',
-        executable='pure_pursuit',
+        package='f1tenth',
+        executable='pure_pursuit_node',
         name='pure_pursuit_controller',
         output='screen',
         parameters=[{

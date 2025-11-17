@@ -10,15 +10,16 @@ F1TENTH 자율주행 레이싱 시뮬레이션 환경
 
 ## 📦 패키지 구조
 
-### 1. [simulator](simulator/) - 시뮬레이션 환경
+### 1. [simulation](simulation/) - 시뮬레이션 환경
 F1TENTH Gym ↔ ROS2 브리지, 센서 데이터 발행, TF 관리
 
-### 2. [path_planner](path_planner/) - 경로 계획
-- **Global**: 중심선/체크포인트 기반 전역 경로
-- **Local**: LiDAR 기반 실시간 장애물 회피
-
-### 3. [control](control/) - 차량 제어
-Pure Pursuit 기반 경로 추종 및 조향 제어
+### 2. [f1tenth](f1tenth/) - 통합 자율주행 시스템
+- **control**: Pure Pursuit 기반 경로 추종 및 조향 제어
+- **localization**: EKF 및 AMCL 기반 위치 추정
+- **path_planner**: 전역/지역 경로 계획
+  - Global: 중심선/체크포인트 기반 전역 경로
+  - Local: LiDAR 기반 실시간 장애물 회피
+- **tools**: CLI 도구 (경로 최적화, 데이터 처리)
 
 ## 🛠️ 설치
 
@@ -88,14 +89,16 @@ ros2 launch f1tenth full_system_launch.py
 ### 체크포인트 기록
 ```bash
 # RViz에서 "Publish Point"로 경로 기록
-ros2 launch path_planner checkpoint_recorder_launch.py
+ros2 launch f1tenth checkpoint_recorder_launch.py
 ```
 
-### 로컬 영역 계산
+### CLI 도구 사용
 ```bash
-ros2 run path_planner local_graph \
-  --lateral-count 8 \
-  --heading-count 5
+# 레이싱 라인 최적화
+f1tenth-optimize-racing-line
+
+# 트랙 폭 데이터 병합
+f1tenth-merge-widths
 ```
 
 ## 🔗 주요 토픽

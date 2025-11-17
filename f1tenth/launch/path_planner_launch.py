@@ -54,7 +54,7 @@ def get_workspace_root():
 
 def launch_setup(context, *args, **kwargs):
     """런치 인자 해석 후 호출되는 설정 함수"""
-    pkg_share = get_package_share_directory('path_planner')
+    pkg_share = get_package_share_directory('f1tenth')
     ws_root = get_workspace_root()
 
     # 런치 인자 해석
@@ -64,9 +64,9 @@ def launch_setup(context, *args, **kwargs):
 
     # 파일명만 제공된 경우 전체 경로로 변환
     if not os.path.isabs(global_config):
-        global_config = os.path.join(pkg_share, 'config', global_config)
+        global_config = os.path.join(pkg_share, 'config', 'path_planner', global_config)
     if not os.path.isabs(local_config):
-        local_config = os.path.join(pkg_share, 'config', local_config)
+        local_config = os.path.join(pkg_share, 'config', 'path_planner', local_config)
 
     # 설정 파일 로드
     global_params = load_yaml_params(global_config, ws_root)
@@ -84,7 +84,7 @@ def launch_setup(context, *args, **kwargs):
 
     # 노드 생성
     global_node = Node(
-        package='path_planner',
+        package='f1tenth',
         executable=global_executable,
         name=global_name,
         output='screen',
@@ -92,7 +92,7 @@ def launch_setup(context, *args, **kwargs):
     )
 
     local_node = Node(
-        package='path_planner',
+        package='f1tenth',
         executable=local_executable,
         name=local_name,
         output='screen',
@@ -105,7 +105,7 @@ def launch_setup(context, *args, **kwargs):
         simulator_launch = IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(
-                    get_package_share_directory('simulator'),
+                    get_package_share_directory('simulation'),
                     'launch',
                     'gym_bridge_launch.py'
                 )

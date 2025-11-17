@@ -44,7 +44,7 @@ def generate_launch_description():
     simulator_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([
-                FindPackageShare('simulator'),
+                FindPackageShare('simulation'),
                 'launch',
                 'gym_bridge_launch.py'
             ])
@@ -58,7 +58,7 @@ def generate_launch_description():
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     PathJoinSubstitution([
-                        FindPackageShare('path_planner'),
+                        FindPackageShare('f1tenth'),
                         'launch',
                         'path_planner_launch.py'
                     ])
@@ -79,9 +79,9 @@ def generate_launch_description():
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     PathJoinSubstitution([
-                        FindPackageShare('control'),
+                        FindPackageShare('f1tenth'),
                         'launch',
-                        'pure_pursuit_launch.py'
+                        'control_launch.py'
                     ])
                 )
             )

@@ -6,7 +6,7 @@ import os
 from glob import glob
 
 # 패키지 이름
-package_name = 'simulator'
+package_name = 'simulation'
 
 
 # ament 리소스 마커 파일 경로 (resource 디렉토리에 실제 파일 존재)
@@ -41,9 +41,9 @@ setup(
     entry_points={
         'console_scripts': [
             # gym_bridge 명령어 정의
-            'gym_bridge = simulator.gym_bridge:main',
-            'path_publisher = simulator.path_publisher:main',
-            'scale_calibrator = simulator.scale_calibrator:main'
+            'gym_bridge = simulation.gym_bridge:main',
+            'path_publisher = simulation.path_publisher:main',
+            'scale_calibrator = simulation.scale_calibrator:main'
         ],
     },
 )
