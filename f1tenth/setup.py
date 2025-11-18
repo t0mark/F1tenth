@@ -12,7 +12,7 @@ setup(
         f'{package_name}.control',
         f'{package_name}.localization',
         f'{package_name}.planning',
-        f'{package_name}.planning.utils',
+        f'{package_name}.planning.tools',
         f'{package_name}.tools',
     ],
     data_files=[
@@ -63,8 +63,8 @@ setup(
             'local_hybrid_astar_node = f1tenth.planning.local_hybrid_astar:main',
             'local_sampler_node = f1tenth.planning.local_sampler:main',
 
-            # Planning - Utils
-            'checkpoint_recorder_node = f1tenth.planning.utils.checkpoint_recorder:main',
+            # Planning - Tools
+            'checkpoint_recorder_node = f1tenth.planning.tools.checkpoint_recorder:main',
 
             # Tools
             'f1tenth-optimize-racing-line = f1tenth.tools.optimize_racing_line:main',
