@@ -51,7 +51,7 @@ setup(
             'control_pure_pursuit_node = f1tenth.control.pure_pursuit:main',
 
             # Localization
-            'odom_broadcaster_node = f1tenth.localization.odom_broadcaster:main',
+            'odom_publisher_node = f1tenth.localization.odom_publisher:main',
 
             # Planning - Global
             'global_centerline_node = f1tenth.planning.global_centerline:main',

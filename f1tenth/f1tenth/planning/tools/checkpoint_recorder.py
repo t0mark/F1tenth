@@ -19,7 +19,7 @@ from tf2_ros import Buffer, TransformListener
 
 import numpy as np
 import matplotlib
-matplotlib.use('Agg')  # GUI 없이 이미지 저장
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 

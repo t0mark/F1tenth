@@ -3,10 +3,6 @@
 Checkpoint Recorder Launch
 ==========================
 Launch file for checkpoint_recorder_node that saves clicked points to CSV and publishes path
-
-Usage:
-  ros2 launch f1tenth checkpoint_recorder_launch.py \
-    output_csv_path:=/absolute/path/to/checkpoints.csv
 """
 
 import os
