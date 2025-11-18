@@ -159,7 +159,7 @@ class GymBridge(Node):
         self.obstacle_seq = 0
         self.scan_range_max = 30.0
 
-        simulator_share_dir = Path(get_package_share_directory('simulator'))
+        simulator_share_dir = Path(get_package_share_directory('simulation'))
         obstacle_xacro = simulator_share_dir / 'urdf' / 'obstacle.xacro'
         try:
             processed = xacro.process_file(

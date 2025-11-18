@@ -13,7 +13,6 @@ setup(
         f'{package_name}.localization',
         f'{package_name}.planning',
         f'{package_name}.planning.tools',
-        f'{package_name}.tools',
     ],
     data_files=[
         # Resource index
@@ -49,10 +48,10 @@ setup(
     entry_points={
         'console_scripts': [
             # Control
-            'pure_pursuit_node = f1tenth.control.pure_pursuit:main',
+            'control_pure_pursuit_node = f1tenth.control.pure_pursuit:main',
 
             # Localization
-            'tf_to_odom_node = f1tenth.localization.tf_to_odom:main',
+            'odom_broadcaster_node = f1tenth.localization.odom_broadcaster:main',
 
             # Planning - Global
             'global_centerline_node = f1tenth.planning.global_centerline:main',
@@ -65,10 +64,6 @@ setup(
 
             # Planning - Tools
             'checkpoint_recorder_node = f1tenth.planning.tools.checkpoint_recorder:main',
-
-            # Tools
-            'f1tenth-optimize-racing-line = f1tenth.tools.optimize_racing_line:main',
-            'f1tenth-merge-widths = f1tenth.tools.merge_track_widths:main',
         ],
     },
 )

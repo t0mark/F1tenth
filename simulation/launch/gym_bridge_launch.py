@@ -23,7 +23,7 @@ def generate_launch_description():
     
     # 설정 파일
     ## 경로 구성
-    simulator_share_dir = get_package_share_directory('simulator')
+    simulator_share_dir = get_package_share_directory('simulation')
     config = os.path.join(
         simulator_share_dir,
         'config',
@@ -83,14 +83,14 @@ def generate_launch_description():
 
         # gym_bridge 노드 - 맵 경로 파라미터 오버라이드
         bridge_node = Node(
-            package='simulator',
+            package='simulation',
             executable='gym_bridge',
             name='bridge',
             parameters=[config, {'map_path': map_path_base}]
         )
 
         path_publisher_node = Node(
-            package='simulator',
+            package='simulation',
             executable='path_publisher',
             name='path_publisher',
             parameters=[{'odom_topic': config_dict['bridge']['ros__parameters']['ego_odom_topic'],
@@ -129,7 +129,7 @@ def generate_launch_description():
         package='rviz2',
         executable='rviz2',
         name='rviz',
-        arguments=['-d', os.path.join(get_package_share_directory('simulator'), 'rviz', 'gym_bridge.rviz')]
+        arguments=['-d', os.path.join(get_package_share_directory('simulation'), 'rviz', 'gym_bridge.rviz')]
     )
 
     # 자아 차량 로봇 상태 퍼블리셔 (URDF 모델 게시)
@@ -137,7 +137,7 @@ def generate_launch_description():
         package='robot_state_publisher',
         executable='robot_state_publisher',
         name='ego_robot_state_publisher',
-        parameters=[{'robot_description': Command(['xacro ', os.path.join(get_package_share_directory('simulator'), 'urdf', 'ego_racecar.xacro')])}],
+        parameters=[{'robot_description': Command(['xacro ', os.path.join(get_package_share_directory('simulation'), 'urdf', 'ego_racecar.xacro')])}],
         remappings=[('/robot_description', 'ego_robot_description')]
     )
     
@@ -146,7 +146,7 @@ def generate_launch_description():
         package='robot_state_publisher',
         executable='robot_state_publisher',
         name='opp_robot_state_publisher',
-        parameters=[{'robot_description': Command(['xacro ', os.path.join(get_package_share_directory('simulator'), 'urdf', 'opp_racecar.xacro')])}],
+        parameters=[{'robot_description': Command(['xacro ', os.path.join(get_package_share_directory('simulation'), 'urdf', 'opp_racecar.xacro')])}],
         remappings=[('/robot_description', 'opp_robot_description')]
     )
 

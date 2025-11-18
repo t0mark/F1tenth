@@ -2,10 +2,10 @@
 """
 Checkpoint Recorder Launch
 ==========================
-클릭한 포인트를 CSV로 저장하고 경로를 발행하는 checkpoint_recorder_node 런치 파일
+Launch file for checkpoint_recorder_node that saves clicked points to CSV and publishes path
 
-사용법:
-  ros2 launch path_planner checkpoint_recorder_launch.py \
+Usage:
+  ros2 launch f1tenth checkpoint_recorder_launch.py \
     output_csv_path:=/absolute/path/to/checkpoints.csv
 """
 
@@ -21,13 +21,22 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     """Create launch description for checkpoint recorder node."""
+    # f1tenth 패키지의 소스 디렉토리 경로 찾기
     pkg_share = get_package_share_directory('f1tenth')
-    workspace_root = os.path.abspath(os.path.join(pkg_share, '..', '..', '..', '..'))
-    src_base = os.path.join(workspace_root, 'src', 'f1tenth')
-    if os.path.isdir(os.path.join(workspace_root, 'src')):
-        default_csv_path = os.path.join(src_base, 'data', 'checkpoints.csv')
+
+    # 현재 파일 경로에서 src/f1tenth 찾기
+    parts = pkg_share.split(os.sep)
+
+    # 'install' 이전의 경로를 찾아서 src 디렉토리로 변환
+    if 'install' in parts:
+        install_index = parts.index('install')
+        workspace_root = os.sep.join(parts[:install_index])
+        src_base = os.path.join(workspace_root, 'src', 'f1tenth')
     else:
-        default_csv_path = os.path.join(pkg_share, 'data', 'checkpoints.csv')
+        # fallback
+        src_base = pkg_share
+
+    default_csv_path = os.path.join(src_base, 'data', 'checkpoints.csv')
     simulator_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(

@@ -740,7 +740,7 @@ def _find_default_localization_launch() -> Optional[Path]:
 def _find_default_map_yaml() -> Optional[Path]:
     """Find default map YAML from simulator config."""
     try:
-        sim_share = Path(get_package_share_directory('simulator'))
+        sim_share = Path(get_package_share_directory('simulation'))
         f1tenth_share = Path(get_package_share_directory('f1tenth'))
 
         sim_config = sim_share / 'config' / 'sim.yaml'
