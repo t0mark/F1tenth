@@ -11,8 +11,8 @@ setup(
         package_name,
         f'{package_name}.control',
         f'{package_name}.localization',
-        f'{package_name}.path_planner',
-        f'{package_name}.path_planner.utils',
+        f'{package_name}.planning',
+        f'{package_name}.planning.utils',
         f'{package_name}.tools',
     ],
     data_files=[
@@ -23,6 +23,10 @@ setup(
         ('share/' + package_name, ['package.xml']),
         # Launch files
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
+        (os.path.join('share', package_name, 'launch', 'localization'), glob('launch/localization/*.py')),
+        (os.path.join('share', package_name, 'launch', 'planning'), glob('launch/planning/*.py')),
+        (os.path.join('share', package_name, 'launch', 'control'), glob('launch/control/*.py')),
+        (os.path.join('share', package_name, 'launch', 'tools'), glob('launch/tools/*.py')),
         # Maps
         (os.path.join('share', package_name, 'maps'), glob('maps/*')),
         # RViz configurations
@@ -30,7 +34,7 @@ setup(
         # Config files
         (os.path.join('share', package_name, 'config', 'control'), glob('config/control/*.yaml')),
         (os.path.join('share', package_name, 'config', 'localization'), glob('config/localization/*.yaml')),
-        (os.path.join('share', package_name, 'config', 'path_planner'), glob('config/path_planner/*.yaml')),
+        (os.path.join('share', package_name, 'config', 'planning'), glob('config/planning/*.yaml')),
         (os.path.join('share', package_name, 'config', 'mapping'), glob('config/mapping/*.yaml')),
         # Data files
         (os.path.join('share', package_name, 'data'), glob('data/*')),
@@ -50,17 +54,17 @@ setup(
             # Localization
             'tf_to_odom_node = f1tenth.localization.tf_to_odom:main',
 
-            # Path Planner - Global
-            'global_centerline_node = f1tenth.path_planner.global_centerline:main',
-            'global_checkpoint_node = f1tenth.path_planner.global_checkpoint:main',
+            # Planning - Global
+            'global_centerline_node = f1tenth.planning.global_centerline:main',
+            'global_checkpoint_node = f1tenth.planning.global_checkpoint:main',
 
-            # Path Planner - Local
-            'local_avoidance_node = f1tenth.path_planner.local_avoidance:main',
-            'local_hybrid_astar_node = f1tenth.path_planner.local_hybrid_astar:main',
-            'local_sampler_node = f1tenth.path_planner.local_sampler:main',
+            # Planning - Local
+            'local_avoidance_node = f1tenth.planning.local_avoidance:main',
+            'local_hybrid_astar_node = f1tenth.planning.local_hybrid_astar:main',
+            'local_sampler_node = f1tenth.planning.local_sampler:main',
 
-            # Path Planner - Utils
-            'checkpoint_recorder_node = f1tenth.path_planner.utils.checkpoint_recorder:main',
+            # Planning - Utils
+            'checkpoint_recorder_node = f1tenth.planning.utils.checkpoint_recorder:main',
 
             # Tools
             'f1tenth-optimize-racing-line = f1tenth.tools.optimize_racing_line:main',

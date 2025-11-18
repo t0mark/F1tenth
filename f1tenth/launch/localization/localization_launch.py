@@ -11,7 +11,7 @@ def generate_launch_description():
 
     # 설정 파일 경로
     amcl_config = os.path.join(pkg_share, 'config', 'localization', 'amcl.yaml')
-    ekf_launch_file = os.path.join(pkg_share, 'launch', 'ekf_launch.py')
+    ekf_launch_file = os.path.join(pkg_share, 'launch', 'localization', 'ekf_launch.py')
 
     return LaunchDescription([
         # 시뮬레이션 시간 사용 여부

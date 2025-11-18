@@ -17,7 +17,7 @@ def generate_launch_description():
     rviz_config = os.path.join(
         get_package_share_directory('f1tenth'), 'rviz', 'map.rviz')
     localization_launch = os.path.join(
-        get_package_share_directory('f1tenth'), 'launch', 'ekf_launch.py')
+        get_package_share_directory('f1tenth'), 'launch', 'localization', 'ekf_launch.py')
 
     use_sim_time_argument = DeclareLaunchArgument(
         'use_sim_time',

@@ -60,6 +60,7 @@ def generate_launch_description():
                     PathJoinSubstitution([
                         FindPackageShare('f1tenth'),
                         'launch',
+                        'planning',
                         'path_planner_launch.py'
                     ])
                 ),
@@ -81,6 +82,7 @@ def generate_launch_description():
                     PathJoinSubstitution([
                         FindPackageShare('f1tenth'),
                         'launch',
+                        'control',
                         'control_launch.py'
                     ])
                 )

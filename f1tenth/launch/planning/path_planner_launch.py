@@ -64,9 +64,9 @@ def launch_setup(context, *args, **kwargs):
 
     # 파일명만 제공된 경우 전체 경로로 변환
     if not os.path.isabs(global_config):
-        global_config = os.path.join(pkg_share, 'config', 'path_planner', global_config)
+        global_config = os.path.join(pkg_share, 'config', 'planning', global_config)
     if not os.path.isabs(local_config):
-        local_config = os.path.join(pkg_share, 'config', 'path_planner', local_config)
+        local_config = os.path.join(pkg_share, 'config', 'planning', local_config)
 
     # 설정 파일 로드
     global_params = load_yaml_params(global_config, ws_root)

@@ -16,7 +16,7 @@ F1TENTH Gym ↔ ROS2 브리지, 센서 데이터 발행, TF 관리
 ### 2. [f1tenth](f1tenth/) - 통합 자율주행 시스템
 - **control**: Pure Pursuit 기반 경로 추종 및 조향 제어
 - **localization**: EKF 및 AMCL 기반 위치 추정
-- **path_planner**: 전역/지역 경로 계획
+- **planning**: 전역/지역 경로 계획
   - Global: 중심선/체크포인트 기반 전역 경로
   - Local: LiDAR 기반 실시간 장애물 회피
 - **tools**: CLI 도구 (경로 최적화, 데이터 처리)
