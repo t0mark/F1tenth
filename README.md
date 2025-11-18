@@ -21,6 +21,10 @@ F1TENTH Gym ↔ ROS2 브리지, 센서 데이터 발행, TF 관리
   - Local: LiDAR 기반 실시간 장애물 회피
 - **tools**: CLI 도구 (경로 최적화, 데이터 처리)
 
+### 3. [real_system](real_system/) - 실제 로봇 하드웨어 제어
+- F1TENTH 로봇 하드웨어 드라이버 (VESC, LiDAR, IMU)
+- RealSense 카메라 및 IMU 센서
+
 ## 🛠️ 설치
 
 ### 1. F1TENTH Gym 설치
@@ -74,10 +78,10 @@ rosdep install -i --from-path src --rosdistro humble -y
 ### 실제 로봇 연결
 ```bash
 # F1TENTH 로봇 연결
-ros2 launch f1tenth hardware_launch.py
+ros2 launch real_system hardware_launch.py
 
 # RealSense 카메라 실행
-ros2 launch f1tenth camera_launch.py
+ros2 launch real_system camera_launch.py
 ```
 
 ### 시뮬레이션 - 통합 시스템 실행

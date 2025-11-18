@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypeset="w3c-xml-schema"?>
+<package format="3">
+  <name>real_system</name>
+  <version>1.0.0</version>
+  <description>F1TENTH real robot hardware bringup package</description>
+  <maintainer email="user@example.com">F1TENTH Team</maintainer>
+  <license>MIT</license>
+
+  <!-- Core ROS2 dependencies -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <!-- Transform system -->
+  <exec_depend>tf2_ros</exec_depend>
+
+  <!-- Hardware dependencies -->
+  <exec_depend>realsense2_camera</exec_depend>
+  <exec_depend>f1tenth_stack</exec_depend>
+
+  <!-- Test dependencies -->
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
