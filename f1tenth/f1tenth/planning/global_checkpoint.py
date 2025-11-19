@@ -35,7 +35,7 @@ class GlobalCheckpointNode(Node):
         if not csv_filename:
             raise RuntimeError('checkpoint_csv_path parameter (filename) is required')
 
-        pkg_share = get_package_share_directory('path_planner')
+        pkg_share = get_package_share_directory('f1tenth')
         self.csv_path = os.path.join(pkg_share, 'data', csv_filename)
 
         # 원본 포인트

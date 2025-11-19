@@ -1,0 +1,29 @@
+controller:
+  ros__parameters:
+    # 노드 메타데이터 (런치 파일에서 동적 로드용)
+    node_executable: "pure_pursuit_node"
+    node_name: "pure_pursuit_controller"
+    node_package: "f1tenth"
+
+    # Vehicle parameters
+    wheelbase: 0.3302
+    max_steering_angle: 0.4189
+
+    # Topic parameters
+    path_topic: /local_path
+    odom_topic: /odom
+    drive_topic: /drive
+
+    # Speed parameters
+    v_min: 3.0
+    v_max: 9.0
+    max_lateral_accel: 14.715  # 1.5 * g (F1TENTH benchmark)
+
+    # Lookahead parameters
+    ld_min: 0.5
+    ld_max: 1.8
+    ld_speed_gain: 0.18
+
+    # Control parameters
+    control_rate_hz: 50.0
+    steer_smooth_alpha: 0.3

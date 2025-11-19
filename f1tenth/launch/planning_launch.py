@@ -3,18 +3,6 @@
 Unified Path Planner Launch File
 =================================
 글로벌 플래너와 로컬 플래너를 YAML 설정 파일로 선택 가능한 통합 런치 파일
-
-사용법:
-  # Centerline 글로벌 플래너 사용
-  ros2 launch path_planner path_planner_launch.py global_config:=centerline_planner.yaml
-
-  # Checkpoint 글로벌 플래너 사용
-  ros2 launch path_planner path_planner_launch.py global_config:=checkpoint_planner.yaml
-
-  # 커스텀 설정 사용
-  ros2 launch path_planner path_planner_launch.py \
-    global_config:=/path/to/custom_global.yaml \
-    local_config:=/path/to/custom_local.yaml
 """
 
 import os
@@ -28,7 +16,7 @@ from ament_index_python.packages import get_package_share_directory
 
 
 def load_yaml_params(yaml_path, workspace_root):
-    """YAML 파일 로드 및 ${WORKSPACE_ROOT} 플레이스홀더 치환"""
+    # YAML 파일 로드 및 ${WORKSPACE_ROOT} 플레이스홀더 치환
     with open(yaml_path, 'r') as f:
         params = yaml.safe_load(f)
 
@@ -46,7 +34,7 @@ def load_yaml_params(yaml_path, workspace_root):
 
 
 def get_workspace_root():
-    """COLCON_PREFIX_PATH에서 워크스페이스 루트 경로 가져오기"""
+    # COLCON_PREFIX_PATH에서 워크스페이스 루트 경로 가져오기
     prefix_path = os.environ.get('COLCON_PREFIX_PATH', '/home/tomark/f1_ws/install')
     install_path = prefix_path.split(':')[0]
     return os.path.dirname(install_path)  # 'install' 제거하여 워크스페이스 루트 획득
@@ -99,10 +87,10 @@ def launch_setup(context, *args, **kwargs):
         parameters=[local_node_info]
     )
 
-    # is_integrated가 false인 경우에만 simulator 포함
+    # is_integrated가 false인 경우에만 simulation 포함
     nodes = [global_node, local_node]
     if not is_integrated:
-        simulator_launch = IncludeLaunchDescription(
+        simulation_launch = IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(
                     get_package_share_directory('simulation'),
@@ -111,13 +99,13 @@ def launch_setup(context, *args, **kwargs):
                 )
             )
         )
-        nodes.insert(0, simulator_launch)  # 맨 앞에 simulator 추가
+        nodes.insert(0, simulation_launch)  # 맨 앞에 simulation 추가
 
     return nodes
 
 
 def generate_launch_description():
-    """설정 가능한 글로벌/로컬 플래너로 런치 디스크립션 생성"""
+    # 설정 가능한 글로벌/로컬 플래너로 런치 디스크립션 생성
 
     return LaunchDescription([
         # 런치 인자
@@ -134,9 +122,9 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'is_integrated',
             default_value='false',
-            description='통합 런치 모드 (true: simulator 별도 실행, false: simulator 포함 실행)'
+            description='통합 런치 모드 (true: simulation 별도 실행, false: simulation 포함 실행)'
         ),
 
-        # simulator 및 path_planner 노드들 실행
+        # simulation 및 path_planner 노드들 실행
         OpaqueFunction(function=launch_setup)
     ])

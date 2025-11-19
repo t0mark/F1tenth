@@ -26,11 +26,13 @@ setup(
         (os.path.join('share', package_name, 'launch', 'planning'), glob('launch/planning/*.py')),
         (os.path.join('share', package_name, 'launch', 'control'), glob('launch/control/*.py')),
         (os.path.join('share', package_name, 'launch', 'tools'), glob('launch/tools/*.py')),
+        (os.path.join('share', package_name, 'launch', 'tools', 'mapping'), glob('launch/tools/mapping/*.py')),
         # Maps
         (os.path.join('share', package_name, 'maps'), glob('maps/*')),
         # RViz configurations
         (os.path.join('share', package_name, 'rviz'), glob('rviz/*.rviz')),
         # Config files
+        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
         (os.path.join('share', package_name, 'config', 'control'), glob('config/control/*.yaml')),
         (os.path.join('share', package_name, 'config', 'localization'), glob('config/localization/*.yaml')),
         (os.path.join('share', package_name, 'config', 'planning'), glob('config/planning/*.yaml')),

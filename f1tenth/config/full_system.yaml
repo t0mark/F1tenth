@@ -1,0 +1,68 @@
+# Full System Configuration
+# 글로벌 플래너, 로컬 플래너, 컨트롤러 통합 설정
+
+# ============================================================
+# Global Planner
+# ============================================================
+global_planner:
+  ros__parameters:
+    # 실행할 노드 타입
+    node_executable: 'global_checkpoint_node'
+    node_name: 'global_checkpoint_node'
+
+    # 체크포인트 로딩 파라미터
+    checkpoint_csv_path: 'checkpoints.csv'
+    publish_topic: '/global_path'
+    initial_pose_topic: '/initialpose'
+
+    # 경로 생성 파라미터
+    repeat_count: 30
+    resample_step: 0.25
+
+# ============================================================
+# Local Planner
+# ============================================================
+local_planner:
+  ros__parameters:
+    # 노드 실행 정보
+    node_executable: 'local_sampler_node'
+    node_name: 'path_sampler_node'
+
+    # 글로벌 경로 입력 및 샘플링 설정
+    global_path_topic: '/global_path'
+    sampling_distance: 4.0
+    lookahead_distance: 20.0
+    update_hz: 100
+
+# ============================================================
+# Controller
+# ============================================================
+controller:
+  ros__parameters:
+    # 노드 메타데이터
+    node_executable: "control_pure_pursuit_node"
+    node_name: "pure_pursuit_controller"
+    node_package: "f1tenth"
+
+    # Vehicle parameters
+    wheelbase: 0.3302
+    max_steering_angle: 0.4189
+
+    # Topic parameters
+    path_topic: /local_path
+    odom_topic: /odom
+    drive_topic: /drive
+
+    # Speed parameters
+    v_min: 3.0
+    v_max: 9.0
+    max_lateral_accel: 14.715  # 1.5 * g (F1TENTH benchmark)
+
+    # Lookahead parameters
+    ld_min: 0.5
+    ld_max: 1.8
+    ld_speed_gain: 0.18
+
+    # Control parameters
+    control_rate_hz: 50.0
+    steer_smooth_alpha: 0.3

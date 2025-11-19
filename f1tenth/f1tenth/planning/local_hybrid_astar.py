@@ -273,7 +273,7 @@ class HybridAStarLocalPlanner(Node):
         self.local_graph_meta = {}
 
         try:
-            pkg_share_dir = PathLib(get_package_share_directory('path_planner'))
+            pkg_share_dir = PathLib(get_package_share_directory('f1tenth'))
         except Exception:
             pkg_share_dir = PathLib(__file__).resolve().parent.parent
         default_data_dir = (pkg_share_dir / 'data').resolve()

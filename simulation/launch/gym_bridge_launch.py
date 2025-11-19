@@ -101,7 +101,7 @@ def generate_launch_description():
 
         map_server_launch = IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
-                os.path.join(get_package_share_directory('f1tenth'), 'launch', 'map_server_launch.py')
+                os.path.join(get_package_share_directory('f1tenth'), 'launch', 'tools', 'map_server_launch.py')
             ),
             launch_arguments={
                 'map': map_path_yaml,
