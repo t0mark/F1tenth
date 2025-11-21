@@ -20,6 +20,7 @@ F1TENTH Full System Launch
 """
 
 import os
+import yaml
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
@@ -36,13 +37,44 @@ from ament_index_python.packages import get_package_share_directory
 def launch_setup(context, *args, **kwargs):
     """런치 인자 해석 후 호출되는 설정 함수"""
 
-    is_simulation = LaunchConfiguration('is_simulation').perform(context).lower() == 'true'
     config_file = LaunchConfiguration('config').perform(context)
 
     # 설정 파일 절대 경로 생성
     pkg_share = get_package_share_directory('f1tenth')
     if not os.path.isabs(config_file):
         config_file = os.path.join(pkg_share, 'config', config_file)
+
+    # YAML 설정 파일 로드
+    with open(config_file, 'r') as f:
+        config = yaml.safe_load(f)
+
+    # 시뮬레이션 모드 결정: 런치 인자 우선, 없으면 설정 파일에서 읽기
+    is_simulation_arg = LaunchConfiguration('is_simulation').perform(context)
+    if is_simulation_arg == 'auto':
+        # 설정 파일에서 읽기
+        is_simulation = config.get('system', {}).get('is_simulation', True)
+    else:
+        # 런치 인자 사용
+        is_simulation = is_simulation_arg.lower() == 'true'
+
+    # 각 서브시스템의 설정 파일 경로 추출
+    localization_global = config.get('localization', {}).get('global_config', 'localization/global_amcl.yaml')
+    localization_local = config.get('localization', {}).get('local_config', 'localization/local_ekf.yaml')
+    planning_global = config.get('planning', {}).get('global_config', 'planning/global_checkpoint.yaml')
+    planning_local = config.get('planning', {}).get('local_config', 'planning/local_sampler.yaml')
+    control_config = config.get('control', {}).get('config', 'control/pure_pursuit.yaml')
+
+    # 상대 경로를 절대 경로로 변환
+    if not os.path.isabs(localization_global):
+        localization_global = os.path.join(pkg_share, 'config', localization_global)
+    if not os.path.isabs(localization_local):
+        localization_local = os.path.join(pkg_share, 'config', localization_local)
+    if not os.path.isabs(planning_global):
+        planning_global = os.path.join(pkg_share, 'config', planning_global)
+    if not os.path.isabs(planning_local):
+        planning_local = os.path.join(pkg_share, 'config', planning_local)
+    if not os.path.isabs(control_config):
+        control_config = os.path.join(pkg_share, 'config', control_config)
 
     nodes = []
 
@@ -96,6 +128,8 @@ def launch_setup(context, *args, **kwargs):
                 ])
             ),
             launch_arguments={
+                'global_config': localization_global,
+                'local_config': localization_local,
                 'use_sim_time': 'false',
             }.items()
         )
@@ -113,9 +147,9 @@ def launch_setup(context, *args, **kwargs):
             ])
         ),
         launch_arguments={
-            'global_config': config_file,
-            'local_config': config_file,
-            'is_integrated': 'true',  # simulation은 별도로 이미 실행됨
+            'global_config': planning_global,
+            'local_config': planning_local,
+            'is_integrated': 'true',
         }.items()
     )
     nodes.append(planning_launch)
@@ -132,8 +166,7 @@ def launch_setup(context, *args, **kwargs):
             ])
         ),
         launch_arguments={
-            'controller_config': config_file,
-            'is_integrated': 'true',
+            'controller_config': control_config,
         }.items()
     )
     nodes.append(control_launch)
@@ -152,8 +185,8 @@ def generate_launch_description():
         # ============================================================
         DeclareLaunchArgument(
             'is_simulation',
-            default_value='true',
-            description='시뮬레이션 모드 (true: gym_bridge, false: map_server + localization)'
+            default_value='auto',
+            description='시뮬레이션 모드 (true/false/auto). auto인 경우 설정 파일에서 읽음'
         ),
         DeclareLaunchArgument(
             'map_path',

@@ -48,7 +48,6 @@ def launch_setup(context, *args, **kwargs):
     # 런치 인자 해석
     global_config = LaunchConfiguration('global_config').perform(context)
     local_config = LaunchConfiguration('local_config').perform(context)
-    is_integrated = LaunchConfiguration('is_integrated').perform(context).lower() == 'true'
     use_sim_time = LaunchConfiguration('use_sim_time').perform(context).lower() == 'true'
 
     # 파일명만 제공된 경우 전체 경로로 변환
@@ -115,21 +114,7 @@ def launch_setup(context, *args, **kwargs):
         ]
     )
 
-    # is_integrated가 false인 경우에만 simulator 포함
-    nodes = [local_node, global_node, odom_publisher_node]
-    if not is_integrated:
-        simulator_launch = IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(
-                os.path.join(
-                    get_package_share_directory('simulation'),
-                    'launch',
-                    'gym_bridge_launch.py'
-                )
-            )
-        )
-        nodes.insert(0, simulator_launch)  # 맨 앞에 simulator 추가
-
-    return nodes
+    return [local_node, global_node, odom_publisher_node]
 
 
 def generate_launch_description():
@@ -148,16 +133,11 @@ def generate_launch_description():
             description='로컬 로컬라이제이션 설정 파일 (파일명 또는 절대 경로)'
         ),
         DeclareLaunchArgument(
-            'is_integrated',
-            default_value='false',
-            description='통합 런치 모드 (true: simulator 별도 실행, false: simulator 포함 실행)'
-        ),
-        DeclareLaunchArgument(
             'use_sim_time',
             default_value='false',
             description='Use simulation time'
         ),
 
-        # simulator 및 localization 노드들 실행
+        # localization 노드들 실행
         OpaqueFunction(function=launch_setup)
     ])

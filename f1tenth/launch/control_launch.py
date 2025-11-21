@@ -47,7 +47,6 @@ def launch_setup(context, *args, **kwargs):
 
     # 런치 인자 해석
     controller_config = LaunchConfiguration('controller_config').perform(context)
-    is_integrated = LaunchConfiguration('is_integrated').perform(context).lower() == 'true'
 
     # 파일명만 제공된 경우 전체 경로로 변환
     if not os.path.isabs(controller_config):
@@ -74,21 +73,7 @@ def launch_setup(context, *args, **kwargs):
         parameters=[controller_node_info]
     )
 
-    # is_integrated가 false인 경우에만 simulator 포함
-    nodes = [controller_node]
-    if not is_integrated:
-        simulator_launch = IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(
-                os.path.join(
-                    get_package_share_directory('simulation'),
-                    'launch',
-                    'gym_bridge_launch.py'
-                )
-            )
-        )
-        nodes.insert(0, simulator_launch)  # 맨 앞에 simulator 추가
-
-    return nodes
+    return [controller_node]
 
 
 def generate_launch_description():
@@ -101,12 +86,7 @@ def generate_launch_description():
             default_value='pure_pursuit.yaml',
             description='컨트롤러 설정 파일 (파일명 또는 절대 경로)'
         ),
-        DeclareLaunchArgument(
-            'is_integrated',
-            default_value='false',
-            description='통합 런치 모드 (true: simulator 별도 실행, false: simulator 포함 실행)'
-        ),
 
-        # simulator 및 controller 노드 실행
+        # controller 노드 실행
         OpaqueFunction(function=launch_setup)
     ])

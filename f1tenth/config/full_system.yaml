@@ -1,68 +1,28 @@
 # Full System Configuration
-# 글로벌 플래너, 로컬 플래너, 컨트롤러 통합 설정
+# 각 서브시스템의 설정 파일 경로를 지정
 
 # ============================================================
-# Global Planner
+# System Mode
 # ============================================================
-global_planner:
-  ros__parameters:
-    # 실행할 노드 타입
-    node_executable: 'global_checkpoint_node'
-    node_name: 'global_checkpoint_node'
-
-    # 체크포인트 로딩 파라미터
-    checkpoint_csv_path: 'checkpoints.csv'
-    publish_topic: '/global_path'
-    initial_pose_topic: '/initialpose'
-
-    # 경로 생성 파라미터
-    repeat_count: 30
-    resample_step: 0.25
+system:
+  is_simulation: true  # true: Simulation 모드, false: Real 모드
 
 # ============================================================
-# Local Planner
+# Localization Config Files
 # ============================================================
-local_planner:
-  ros__parameters:
-    # 노드 실행 정보
-    node_executable: 'local_sampler_node'
-    node_name: 'path_sampler_node'
-
-    # 글로벌 경로 입력 및 샘플링 설정
-    global_path_topic: '/global_path'
-    sampling_distance: 4.0
-    lookahead_distance: 20.0
-    update_hz: 100
+localization:
+  global_config: "localization/global_amcl.yaml"    # 글로벌 로컬라이제이션 (AMCL 등)
+  local_config: "localization/local_ekf.yaml"       # 로컬 로컬라이제이션 (EKF 등)
 
 # ============================================================
-# Controller
+# Planning Config Files
 # ============================================================
-controller:
-  ros__parameters:
-    # 노드 메타데이터
-    node_executable: "control_pure_pursuit_node"
-    node_name: "pure_pursuit_controller"
-    node_package: "f1tenth"
+planning:
+  global_config: "planning/global_checkpoint.yaml"  # 글로벌 플래너 (Checkpoint, Centerline 등)
+  local_config: "planning/local_sampler.yaml"       # 로컬 플래너 (Sampler, Avoidance 등)
 
-    # Vehicle parameters
-    wheelbase: 0.3302
-    max_steering_angle: 0.4189
-
-    # Topic parameters
-    path_topic: /local_path
-    odom_topic: /odom
-    drive_topic: /drive
-
-    # Speed parameters
-    v_min: 3.0
-    v_max: 9.0
-    max_lateral_accel: 14.715  # 1.5 * g (F1TENTH benchmark)
-
-    # Lookahead parameters
-    ld_min: 0.5
-    ld_max: 1.8
-    ld_speed_gain: 0.18
-
-    # Control parameters
-    control_rate_hz: 50.0
-    steer_smooth_alpha: 0.3
+# ============================================================
+# Control Config Files
+# ============================================================
+control:
+  config: "control/pure_pursuit.yaml"               # 컨트롤러 (Pure Pursuit 등)

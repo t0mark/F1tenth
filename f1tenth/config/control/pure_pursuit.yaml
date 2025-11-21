@@ -1,7 +1,7 @@
 controller:
   ros__parameters:
     # 노드 메타데이터 (런치 파일에서 동적 로드용)
-    node_executable: "pure_pursuit_node"
+    node_executable: "control_pure_pursuit_node"
     node_name: "pure_pursuit_controller"
     node_package: "f1tenth"
 
