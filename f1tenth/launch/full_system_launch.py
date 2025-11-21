@@ -19,6 +19,7 @@ F1TENTH Full System Launch
   ros2 launch f1tenth full_system_launch.py config:=my_config.yaml
 """
 
+import math
 import os
 import yaml
 from launch import LaunchDescription
@@ -75,6 +76,18 @@ def launch_setup(context, *args, **kwargs):
         planning_local = os.path.join(pkg_share, 'config', planning_local)
     if not os.path.isabs(control_config):
         control_config = os.path.join(pkg_share, 'config', control_config)
+
+    map_yaml_path = LaunchConfiguration('map').perform(context) if not is_simulation else \
+                    os.path.join(pkg_share, 'maps', LaunchConfiguration('map_path').perform(context) + '.yaml')
+
+    map_graph_settings = config.get('map_graph', {})
+    map_graph_auto_generate = str(map_graph_settings.get('auto_generate', True)).lower()
+    map_graph_dir = map_graph_settings.get('graph_dir', 'data')
+    map_graph_xy_res = str(map_graph_settings.get('xy_resolution', 0.1))
+    map_graph_theta_res = str(map_graph_settings.get('theta_resolution', math.pi / 12.0))
+    map_graph_vehicle_length = str(map_graph_settings.get('vehicle_length', 0.50))
+    map_graph_vehicle_width = str(map_graph_settings.get('vehicle_width', 0.25))
+    map_graph_safety_margin = str(map_graph_settings.get('safety_margin', 0.1))
 
     nodes = []
 
@@ -150,6 +163,14 @@ def launch_setup(context, *args, **kwargs):
             'global_config': planning_global,
             'local_config': planning_local,
             'is_integrated': 'true',
+            'map_yaml': map_yaml_path,
+            'map_graph_auto_generate': map_graph_auto_generate,
+            'map_graph_dir': map_graph_dir,
+            'map_graph_xy_resolution': map_graph_xy_res,
+            'map_graph_theta_resolution': map_graph_theta_res,
+            'map_graph_vehicle_length': map_graph_vehicle_length,
+            'map_graph_vehicle_width': map_graph_vehicle_width,
+            'map_graph_safety_margin': map_graph_safety_margin,
         }.items()
     )
     nodes.append(planning_launch)
