@@ -357,7 +357,7 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep All
         Reliability Policy: System Default
-        Value: /map_graph_markers
+        Value: /graph_visualization
       Value: true
   Enabled: true
   Global Options:
@@ -420,10 +420,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.5597964525222778
+      Pitch: 1.5697963237762451
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 3.1331794261932373
+      Yaw: 3.1431796550750732
     Saved: ~
 Window Geometry:
   Displays:
