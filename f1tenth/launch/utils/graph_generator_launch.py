@@ -18,7 +18,7 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 from ament_index_python.packages import get_package_share_directory
 
-from f1tenth.planning.tools.map_graph import GraphConfig, MapGraphBuilder
+from f1tenth.utils.graph_generator import GraphConfig, MapGraphBuilder
 
 
 def _resolve_with_share(pkg_share: str, value: str) -> str:

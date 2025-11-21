@@ -12,12 +12,12 @@ Occupancy Map to Hash Graph Converter for Hybrid A*
 
 사용 예:
     # 전처리 (오프라인)
-    python3 -m f1tenth.planning.tools.map_graph \
+    python3 -m f1tenth.utils.graph_generator \
         --map maps/track.yaml \
         --output data/track_graph.npz
 
     # 런타임 (노드에서)
-    from f1tenth.planning.tools.map_graph import MapGraph
+    from f1tenth.utils.graph_generator import MapGraph
     graph = MapGraph.load('data/track_graph.npz')
     neighbors = graph.get_neighbors(x, y, theta)
 """

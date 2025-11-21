@@ -11,8 +11,8 @@ system:
 # Localization Config Files
 # ============================================================
 localization:
-  global_config: "localization/global_amcl.yaml"    # 글로벌 로컬라이제이션 (AMCL 등)
-  local_config: "localization/local_ekf.yaml"       # 로컬 로컬라이제이션 (EKF 등)
+  global_config: "localization/global_pose_fusion.yaml"    # 글로벌 로컬라이제이션 (AMCL/맵 서버 기반)
+  local_config: "localization/local_pose_estimator.yaml"   # 로컬 로컬라이제이션 (자체 센서 퓨전)
 
 # ============================================================
 # Planning Config Files

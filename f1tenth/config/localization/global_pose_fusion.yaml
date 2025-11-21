@@ -1,0 +1,19 @@
+global_localization_node:
+  ros__parameters:
+    node_package: "f1tenth"
+    node_executable: "localization_global_pose_node"
+    node_name: "global_localization_node"
+
+    localization_source_topic: "/localization/local_odom"
+    global_measurement_topic: "/amcl_pose"
+    global_pose_topic: "/localization/global_pose"
+    global_odom_topic: "/localization/global_odom"
+
+    map_frame_id: "map"
+    base_frame_id: "base_link"
+    publish_rate_hz: 30.0
+
+    covariance_scale: 0.05
+    fallback_position_variance: 0.5
+    fallback_orientation_variance: 0.2
+    measurement_timeout_sec: 6.0

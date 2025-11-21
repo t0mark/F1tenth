@@ -12,7 +12,7 @@ setup(
         f'{package_name}.control',
         f'{package_name}.localization',
         f'{package_name}.planning',
-        f'{package_name}.planning.tools',
+        f'{package_name}.utils',
     ],
     data_files=[
         # Resource index
@@ -37,6 +37,7 @@ setup(
         (os.path.join('share', package_name, 'config', 'localization'), glob('config/localization/*.yaml')),
         (os.path.join('share', package_name, 'config', 'planning'), glob('config/planning/*.yaml')),
         (os.path.join('share', package_name, 'config', 'utils'), glob('config/utils/*.yaml')),
+        (os.path.join('share', package_name, 'config', 'utils', 'mapping'), glob('config/utils/mapping/*.yaml')),
         # Data files
         (os.path.join('share', package_name, 'data'), glob('data/*')),
     ],
@@ -54,6 +55,8 @@ setup(
 
             # Localization
             'odom_publisher_node = f1tenth.localization.odom_publisher:main',
+            'localization_local_pose_node = f1tenth.localization.local_pose_estimator:main',
+            'localization_global_pose_node = f1tenth.localization.global_pose_fusion:main',
 
             # Planning - Global
             'global_centerline_node = f1tenth.planning.global_centerline:main',
@@ -65,8 +68,8 @@ setup(
             'local_sampler_node = f1tenth.planning.local_sampler:main',
 
             # Planning - Tools
-            'checkpoint_recorder_node = f1tenth.planning.tools.checkpoint_recorder:main',
-            'map_graph_generator = f1tenth.planning.tools.map_graph:main',
+            'checkpoint_recorder_node = f1tenth.utils.checkpoint_recorder:main',
+            'map_graph_generator = f1tenth.utils.graph_generator:main',
         ],
     },
 )

@@ -1,0 +1,22 @@
+local_localization_node:
+  ros__parameters:
+    node_package: "f1tenth"
+    node_executable: "localization_local_pose_node"
+    node_name: "local_localization_node"
+
+    odom_topic: "/wheel/odom"
+    imu_topic: "/camera/camera/imu"
+    output_topic: "/localization/local_odom"
+
+    odom_frame_id: "odom"
+    base_frame_id: "base_link"
+    publish_rate_hz: 50.0
+
+    position_smoothing_alpha: 0.35
+    yaw_smoothing_alpha: 0.7
+    velocity_smoothing_alpha: 0.5
+    use_imu_orientation: true
+
+    position_variance: 0.02
+    orientation_variance: 0.01
+    velocity_variance: 0.05
