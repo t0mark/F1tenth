@@ -1,0 +1,9 @@
+graph_generator:
+  map_yaml: "maps/track.yaml"
+  output_dir: "data"
+  graph_name: "track_graph.npz"
+  xy_resolution: 0.1
+  theta_resolution: 0.261799 # pi/12
+  vehicle_length: 0.5
+  vehicle_width: 0.25
+  safety_margin: 0.1

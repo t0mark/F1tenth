@@ -3,7 +3,8 @@ Panels:
     Help Height: 78
     Name: Displays
     Property Tree Widget:
-      Expanded: ~
+      Expanded:
+        - /MarkerArray1
       Splitter Ratio: 0.5
     Tree Height: 1153
   - Class: rviz_common/Selection
@@ -166,8 +167,8 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 10.500611305236816
-        Min Value: -3.992281913757324
+        Max Value: 10.501235961914062
+        Min Value: -4.004296779632568
         Value: true
       Axis: X
       Channel Name: intensity
@@ -349,13 +350,13 @@ Visualization Manager:
       Enabled: true
       Name: MarkerArray
       Namespaces:
-        {}
+        map_graph_nodes: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /local_graph_markers
+        History Policy: Keep All
+        Reliability Policy: System Default
+        Value: /map_graph_markers
       Value: true
   Enabled: true
   Global Options:
@@ -403,7 +404,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 25.438562393188477
+      Distance: 26.293241500854492
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1

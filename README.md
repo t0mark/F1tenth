@@ -93,17 +93,19 @@ ros2 launch f1tenth full_system_launch.py
 ### 체크포인트 기록
 ```bash
 # RViz에서 "Publish Point"로 경로 기록
-ros2 launch f1tenth checkpoint_recorder_launch.py
+ros2 launch f1tenth utils/checkpoint_recorder_launch.py
 ```
 
-### CLI 도구 사용
+### CLI 도구 및 유틸리티
 ```bash
-# 레이싱 라인 최적화
-f1tenth-optimize-racing-line
+# 그래프 전처리 (maps/track.yaml -> data/track_graph.npz)
+ros2 launch f1tenth utils/graph_generator_launch.py
 
-# 트랙 폭 데이터 병합
-f1tenth-merge-widths
+# SLAM 기반 맵 작성
+ros2 launch f1tenth utils/mapping/slam_toolbox_launch.py
 ```
+
+필요 시 `config/utils/*.yaml`을 수정하거나 런치 인자로 덮어써서 각 유틸리티를 동일한 패턴으로 재사용할 수 있다.
 
 ## 🔗 주요 토픽
 
@@ -116,3 +118,37 @@ f1tenth-merge-widths
 | `/drive` | AckermannDriveStamped | 차량 제어 명령 |
 
 ## 📂 디렉토리 구조
+
+```
+f1tenth/
+├── config/
+│   ├── control/
+│   │   └── *.yaml                 # controller configs
+│   ├── localization/
+│   │   ├── global_*.yaml          # global localization (e.g., AMCL)
+│   │   └── local_*.yaml           # local localization (e.g., EKF)
+│   ├── planning/
+│   │   ├── global_*.yaml          # global planner configs
+│   │   └── local_*.yaml           # local planner configs
+│   └── utils/
+│       ├── graph_generator.yaml
+│       └── slam_toolbox.yaml
+├── launch/
+│   ├── localization_launch.py
+│   ├── planning_launch.py
+│   ├── control_launch.py
+│   ├── full_system_launch.py
+│   └── utils/
+│       ├── map_server_launch.py
+│       ├── checkpoint_recorder_launch.py
+│       ├── graph_generator_launch.py
+│       └── mapping/
+│           └── slam_toolbox_launch.py
+└── f1tenth/
+    ├── localization/              # node implementations
+    ├── planning/
+    │   └── tools/
+    └── control/
+```
+
+런치 파일은 모듈 단위(localization/planning/control)를 유지하면서 각 기능을 설정 파일만 교체하여 조합할 수 있도록 구성되어 있다. Local/Global 구분이 필요한 서브시스템(Localization, Planning)은 모두 `config/<module>/local_*.yaml`, `config/<module>/global_*.yaml` 형태를 따른다.

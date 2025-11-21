@@ -119,7 +119,7 @@ def launch_setup(context, *args, **kwargs):
                 PathJoinSubstitution([
                     FindPackageShare('f1tenth'),
                     'launch',
-                    'tools',
+                    'utils',
                     'map_server_launch.py'
                 ])
             ),

@@ -25,8 +25,8 @@ setup(
         (os.path.join('share', package_name, 'launch', 'localization'), glob('launch/localization/*.py')),
         (os.path.join('share', package_name, 'launch', 'planning'), glob('launch/planning/*.py')),
         (os.path.join('share', package_name, 'launch', 'control'), glob('launch/control/*.py')),
-        (os.path.join('share', package_name, 'launch', 'tools'), glob('launch/tools/*.py')),
-        (os.path.join('share', package_name, 'launch', 'tools', 'mapping'), glob('launch/tools/mapping/*.py')),
+        (os.path.join('share', package_name, 'launch', 'utils'), glob('launch/utils/*.py')),
+        (os.path.join('share', package_name, 'launch', 'utils', 'mapping'), glob('launch/utils/mapping/*.py')),
         # Maps
         (os.path.join('share', package_name, 'maps'), glob('maps/*')),
         # RViz configurations
@@ -36,7 +36,7 @@ setup(
         (os.path.join('share', package_name, 'config', 'control'), glob('config/control/*.yaml')),
         (os.path.join('share', package_name, 'config', 'localization'), glob('config/localization/*.yaml')),
         (os.path.join('share', package_name, 'config', 'planning'), glob('config/planning/*.yaml')),
-        (os.path.join('share', package_name, 'config', 'mapping'), glob('config/mapping/*.yaml')),
+        (os.path.join('share', package_name, 'config', 'utils'), glob('config/utils/*.yaml')),
         # Data files
         (os.path.join('share', package_name, 'data'), glob('data/*')),
     ],
@@ -66,6 +66,7 @@ setup(
 
             # Planning - Tools
             'checkpoint_recorder_node = f1tenth.planning.tools.checkpoint_recorder:main',
+            'map_graph_generator = f1tenth.planning.tools.map_graph:main',
         ],
     },
 )

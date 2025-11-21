@@ -430,7 +430,7 @@ def run_localization_pipeline(
         # 1. Start map_server
         map_server_cmd = [
             'ros2', 'launch',
-            'f1tenth', 'map_server_launch.py',
+            'f1tenth', 'utils/map_server_launch.py',
             f'map:={str(map_yaml)}',
             'use_sim_time:=true'
         ]
