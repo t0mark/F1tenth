@@ -349,7 +349,7 @@ Visualization Manager:
       Value: true
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
-      Name: MarkerArray
+      Name: Graph
       Namespaces:
         {}
       Topic:
@@ -357,7 +357,7 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep All
         Reliability Policy: System Default
-        Value: /graph_visualization
+        Value: /graph
       Value: true
   Enabled: true
   Global Options:
