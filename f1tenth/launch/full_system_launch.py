@@ -31,6 +31,7 @@ from launch.actions import (
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from ament_index_python.packages import get_package_share_directory
 
@@ -39,6 +40,7 @@ def launch_setup(context, *args, **kwargs):
     """런치 인자 해석 후 호출되는 설정 함수"""
 
     config_file = LaunchConfiguration('config').perform(context)
+    path_output_file = LaunchConfiguration('path_output').perform(context)
 
     # 설정 파일 절대 경로 생성
     pkg_share = get_package_share_directory('f1tenth')
@@ -192,6 +194,20 @@ def launch_setup(context, *args, **kwargs):
     )
     nodes.append(control_launch)
 
+    # ============================================================
+    # Path Saver
+    # ============================================================
+    path_saver_node = Node(
+        package='f1tenth',
+        executable='save_path_node',
+        name='path_saver',
+        parameters=[{
+            'path_topic': '/path',
+            'output_file': path_output_file,
+        }]
+    )
+    nodes.append(path_saver_node)
+
     return nodes
 
 
@@ -199,6 +215,14 @@ def generate_launch_description():
     """통합 시스템 런치 디스크립션 생성"""
 
     pkg_share = get_package_share_directory('f1tenth')
+    parts = pkg_share.split(os.sep)
+    if 'install' in parts:
+        install_index = parts.index('install')
+        workspace_root = os.sep.join(parts[:install_index])
+        src_base = os.path.join(workspace_root, 'src', 'f1tenth')
+    else:
+        src_base = pkg_share
+    default_path_output = os.path.join(src_base, 'data', 'trajectory.txt')
 
     return LaunchDescription([
         # ============================================================
@@ -227,6 +251,11 @@ def generate_launch_description():
             'config',
             default_value='full_system.yaml',
             description='통합 시스템 설정 파일 (global, local, control 모두 포함)'
+        ),
+        DeclareLaunchArgument(
+            'path_output',
+            default_value=default_path_output,
+            description='/path 토픽을 KITTI CSV 포맷으로 저장할 출력 파일 경로'
         ),
 
         # 동적 설정 함수 실행

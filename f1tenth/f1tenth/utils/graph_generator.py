@@ -7,13 +7,15 @@ Graph Generator Node
 """
 
 import os
+import math
+import hashlib
+import shutil
 import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy
 from nav_msgs.msg import Path, OccupancyGrid
 from geometry_msgs.msg import PoseStamped
-import math
 
 
 class GraphGenerator(Node):
@@ -31,6 +33,19 @@ class GraphGenerator(Node):
         self.declare_parameter('max_lateral_distance', 3.0)  # 법선 방향 최대 거리 (m)
         self.declare_parameter('min_wall_clearance', 0.2)  # 벽까지의 최소 거리 (m)
 
+        # Adaptive sampling 파라미터
+        self.declare_parameter('enable_adaptive_sampling', True)  # 적응형 샘플링 활성화
+        self.declare_parameter('curvature_threshold_high', 0.3)  # 높은 곡률 임계값 (1/m)
+        self.declare_parameter('curvature_threshold_low', 0.1)  # 낮은 곡률 임계값 (1/m)
+        self.declare_parameter('dense_sampling_factor', 0.5)  # 곡선 구간 샘플링 밀도 증가 (곱셈)
+        self.declare_parameter('sparse_sampling_factor', 1.5)  # 직선 구간 샘플링 밀도 감소 (곱셈)
+
+        # Velocity-aware 파라미터
+        self.declare_parameter('enable_velocity_estimation', True)  # 속도 추정 활성화
+        self.declare_parameter('max_velocity_straight', 8.0)  # 직선 최대 속도 (m/s)
+        self.declare_parameter('max_velocity_curve', 3.0)  # 곡선 최대 속도 (m/s)
+        self.declare_parameter('max_velocity_lane_change', 5.0)  # 차선 변경 최대 속도 (m/s)
+
         # 파라미터 가져오기
         self.global_path_topic = self.get_parameter('global_path_topic').value
         self.map_topic = self.get_parameter('map_topic').value
@@ -39,6 +54,19 @@ class GraphGenerator(Node):
         self.lat_interval = self.get_parameter('lateral_sampling_interval').value
         self.max_lat_distance = self.get_parameter('max_lateral_distance').value
         self.min_wall_clearance = self.get_parameter('min_wall_clearance').value
+
+        # Adaptive sampling 파라미터 가져오기
+        self.enable_adaptive = self.get_parameter('enable_adaptive_sampling').value
+        self.curv_thresh_high = self.get_parameter('curvature_threshold_high').value
+        self.curv_thresh_low = self.get_parameter('curvature_threshold_low').value
+        self.dense_factor = self.get_parameter('dense_sampling_factor').value
+        self.sparse_factor = self.get_parameter('sparse_sampling_factor').value
+
+        # Velocity-aware 파라미터 가져오기
+        self.enable_velocity = self.get_parameter('enable_velocity_estimation').value
+        self.max_vel_straight = self.get_parameter('max_velocity_straight').value
+        self.max_vel_curve = self.get_parameter('max_velocity_curve').value
+        self.max_vel_lane_change = self.get_parameter('max_velocity_lane_change').value
 
         # 상태 변수
         self.global_path = None
@@ -215,27 +243,110 @@ class GraphGenerator(Node):
 
         return sampled
 
+    def sample_path_adaptive(self, poses):
+        """곡률 기반 적응형 샘플링 (간단한 구현)"""
+        # 현재는 균일 샘플링 사용 (adaptive는 향후 개선 가능)
+        # TODO: 실제 곡률 기반 adaptive sampling 구현
+        return self.sample_path_by_distance(poses, self.long_interval)
+
     def quaternion_to_yaw(self, q):
         """쿼터니언을 yaw 각도로 변환"""
         siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
         cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
         return math.atan2(siny_cosp, cosy_cosp)
 
+    def compute_curvature(self, p0, p1, p2):
+        """세 점으로 곡률 계산 (Menger curvature)"""
+        # 삼각형 면적 계산
+        x1, y1 = p0.pose.position.x, p0.pose.position.y
+        x2, y2 = p1.pose.position.x, p1.pose.position.y
+        x3, y3 = p2.pose.position.x, p2.pose.position.y
+
+        area = 0.5 * abs((x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1))
+
+        # 세 변의 길이
+        a = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+        b = math.sqrt((x3 - x2)**2 + (y3 - y2)**2)
+        c = math.sqrt((x3 - x1)**2 + (y3 - y1)**2)
+
+        if a < 1e-6 or b < 1e-6 or c < 1e-6:
+            return 0.0
+
+        # Menger curvature: K = 4 * Area / (a * b * c)
+        curvature = 4.0 * area / (a * b * c + 1e-9)
+        return curvature
+
+    def compute_adaptive_interval(self, curvature):
+        """곡률에 따라 적응형 샘플링 간격 계산"""
+        if not self.enable_adaptive:
+            return self.long_interval
+
+        if curvature >= self.curv_thresh_high:
+            # 높은 곡률 (급커브) -> 촘촘하게
+            return self.long_interval * self.dense_factor
+        elif curvature <= self.curv_thresh_low:
+            # 낮은 곡률 (직선) -> 성기게
+            return self.long_interval * self.sparse_factor
+        else:
+            # 중간 곡률 -> 선형 보간
+            ratio = (curvature - self.curv_thresh_low) / (self.curv_thresh_high - self.curv_thresh_low)
+            factor = self.sparse_factor + (self.dense_factor - self.sparse_factor) * ratio
+            return self.long_interval * factor
+
+    def compute_max_velocity(self, curvature, lane_idx):
+        """곡률과 레인 인덱스로 최대 허용 속도 계산"""
+        if not self.enable_velocity:
+            return self.max_vel_straight  # 기본값
+
+        # 곡률 기반 속도 (중심선 기준)
+        if curvature >= self.curv_thresh_high:
+            base_velocity = self.max_vel_curve
+        elif curvature <= self.curv_thresh_low:
+            base_velocity = self.max_vel_straight
+        else:
+            # 선형 보간
+            ratio = (curvature - self.curv_thresh_low) / (self.curv_thresh_high - self.curv_thresh_low)
+            base_velocity = self.max_vel_straight + (self.max_vel_curve - self.max_vel_straight) * ratio
+
+        # 레인 변경 페널티 (중심선이 아닌 경우)
+        if lane_idx != 0:
+            # 차선 변경은 더 낮은 속도
+            base_velocity = min(base_velocity, self.max_vel_lane_change)
+
+        return base_velocity
+
     def generate_graph(self):
         """그래프 생성 메인 로직"""
         self.get_logger().info('=' * 60)
         self.get_logger().info('그래프 생성 시작')
 
-        # 1. 글로벌 경로 일정 간격으로 샘플링
-        self.get_logger().info(f'1단계: 글로벌 경로 샘플링 (간격: {self.long_interval}m)')
-        centerline_poses = self.sample_path_by_distance(
-            self.global_path.poses,
-            self.long_interval
-        )
+        # 1. 글로벌 경로 adaptive 샘플링
+        if self.enable_adaptive:
+            self.get_logger().info(f'1단계: 곡률 기반 적응형 샘플링 (기본 간격: {self.long_interval}m)')
+            centerline_poses = self.sample_path_adaptive(self.global_path.poses)
+        else:
+            self.get_logger().info(f'1단계: 균일 샘플링 (간격: {self.long_interval}m)')
+            centerline_poses = self.sample_path_by_distance(
+                self.global_path.poses,
+                self.long_interval
+            )
         self.get_logger().info(f'   샘플링된 중심선 노드 수: {len(centerline_poses)}')
 
+        # 곡률 정보 미리 계산 (velocity 추정용)
+        curvatures = []
+        for j in range(len(centerline_poses)):
+            num_poses = len(centerline_poses)
+            prev_idx = (j - 1) % num_poses
+            next_idx = (j + 1) % num_poses
+            curv = self.compute_curvature(
+                centerline_poses[prev_idx],
+                centerline_poses[j],
+                centerline_poses[next_idx]
+            )
+            curvatures.append(curv)
+
         # 그래프 데이터 구조
-        # nodes: list of dict with keys: 'x', 'y', 'theta', 'lane_idx', 'long_idx'
+        # nodes: list of dict with keys: 'x', 'y', 'theta', 'lane_idx', 'long_idx', 'max_velocity', 'curvature'
         # edges: list of tuples (from_idx, to_idx)
         nodes = []
         edges = []
@@ -331,12 +442,16 @@ class GraphGenerator(Node):
             # 생성된 레인들을 노드 리스트에 추가
             for lane_i, lane_data in lanes_at_j.items():
                 node_idx = len(nodes)
+                # 최대 속도 계산
+                max_velocity = self.compute_max_velocity(curvatures[j], lane_i)
                 nodes.append({
                     'x': lane_data['x'],
                     'y': lane_data['y'],
                     'theta': lane_data['theta'],
                     'lane_idx': lane_i,  # 글로벌 패스 기준 고정 인덱스
-                    'long_idx': j
+                    'long_idx': j,
+                    'max_velocity': max_velocity,
+                    'curvature': curvatures[j]
                 })
                 node_map[(lane_i, j)] = node_idx
 
@@ -436,36 +551,120 @@ class GraphGenerator(Node):
         self.get_logger().info('4단계: 그래프 데이터 저장')
 
         # 노드 데이터를 numpy 배열로 변환
+        # [x, y, theta, lane_idx, long_idx, max_velocity, curvature]
         node_data = np.array([
-            [n['x'], n['y'], n['theta'], n['lane_idx'], n['long_idx']]
+            [n['x'], n['y'], n['theta'], n['lane_idx'], n['long_idx'], n['max_velocity'], n['curvature']]
             for n in nodes
-        ])
+        ], dtype=np.float64)
 
         # 간선 데이터를 numpy 배열로 변환
-        edge_data = np.array(edges)
+        if edges:
+            edge_data = np.array(edges, dtype=np.int64)
+        else:
+            edge_data = np.empty((0, 2), dtype=np.int64)
 
-        # 저장 경로 확인 및 디렉토리 생성
-        output_dir = os.path.dirname(self.output_graph_path)
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-            self.get_logger().info(f'   출력 디렉토리 생성: {output_dir}')
+        metadata = np.array([
+            self.long_interval,
+            self.lat_interval,
+            self.max_lat_distance,
+            self.min_wall_clearance
+        ], dtype=np.float64)
 
-        # npz 파일로 저장
-        np.savez(
-            self.output_graph_path,
-            nodes=node_data,
-            edges=edge_data,
-            metadata=np.array([
-                self.long_interval,
-                self.lat_interval,
-                self.max_lat_distance
-            ])
-        )
+        # 그래프 해시 계산
+        graph_hash = self.compute_graph_hash(node_data, edge_data, metadata)
+        hashed_path = self.get_hashed_output_path(graph_hash)
 
-        self.get_logger().info(f'   그래프 저장 완료: {self.output_graph_path}')
+        # 해시 기반 경로가 이미 존재하는지 확인
+        if os.path.exists(hashed_path):
+            self.get_logger().info(f'   동일한 그래프가 이미 존재함: {hashed_path}')
+            self.get_logger().info(f'   그래프 해시: {graph_hash}')
+
+            # 요청된 경로가 있으면 심볼릭 링크 또는 복사 생성
+            target_path = self.output_graph_path
+            if target_path and os.path.abspath(target_path) != os.path.abspath(hashed_path):
+                target_dir = os.path.dirname(target_path)
+                if target_dir and not os.path.exists(target_dir):
+                    os.makedirs(target_dir, exist_ok=True)
+
+                # 기존 파일/링크 제거
+                if os.path.exists(target_path) or os.path.islink(target_path):
+                    os.remove(target_path)
+
+                # 심볼릭 링크 생성 시도 (실패 시 복사)
+                try:
+                    os.symlink(os.path.abspath(hashed_path), target_path)
+                    self.get_logger().info(f'   심볼릭 링크 생성: {target_path} -> {hashed_path}')
+                except OSError:
+                    shutil.copy2(hashed_path, target_path)
+                    self.get_logger().info(f'   파일 복사: {target_path}')
+        else:
+            # 새로운 그래프 저장
+            hashed_dir = os.path.dirname(hashed_path)
+            if hashed_dir and not os.path.exists(hashed_dir):
+                os.makedirs(hashed_dir)
+                self.get_logger().info(f'   출력 디렉토리 생성: {hashed_dir}')
+
+            np.savez(
+                hashed_path,
+                nodes=node_data,
+                edges=edge_data,
+                metadata=metadata,
+                graph_hash=np.array([graph_hash], dtype='S64')
+            )
+
+            self.get_logger().info(f'   그래프 해시: {graph_hash}')
+            self.get_logger().info(f'   해시 기반 그래프 저장: {hashed_path}')
+
+            # 요청된 경로가 있으면 심볼릭 링크 또는 복사 생성
+            target_path = self.output_graph_path
+            if target_path and os.path.abspath(target_path) != os.path.abspath(hashed_path):
+                target_dir = os.path.dirname(target_path)
+                if target_dir and not os.path.exists(target_dir):
+                    os.makedirs(target_dir, exist_ok=True)
+
+                # 기존 파일/링크 제거
+                if os.path.exists(target_path) or os.path.islink(target_path):
+                    os.remove(target_path)
+
+                # 심볼릭 링크 생성 시도 (실패 시 복사)
+                try:
+                    os.symlink(os.path.abspath(hashed_path), target_path)
+                    self.get_logger().info(f'   심볼릭 링크 생성: {target_path} -> {hashed_path}')
+                except OSError:
+                    shutil.copy2(hashed_path, target_path)
+                    self.get_logger().info(f'   파일 복사: {target_path}')
+
         self.get_logger().info(f'   - 노드 수: {len(nodes)}')
         self.get_logger().info(f'   - 간선 수: {len(edges)}')
-        self.get_logger().info(f'   - 노드 형식: [x, y, theta, lane_idx, long_idx]')
+        self.get_logger().info(f'   - 노드 형식: [x, y, theta, lane_idx, long_idx, max_velocity, curvature]')
+        if self.enable_velocity and len(nodes) > 0:
+            velocities = [n['max_velocity'] for n in nodes]
+            self.get_logger().info(f'   - 속도 범위: {min(velocities):.2f} ~ {max(velocities):.2f} m/s')
+
+    def compute_graph_hash(self, node_data, edge_data, metadata):
+        """노드/간선/메타데이터를 기반으로 SHA-256 해시 생성"""
+        hasher = hashlib.sha256()
+        hasher.update(node_data.tobytes())
+        hasher.update(edge_data.tobytes())
+        hasher.update(metadata.tobytes())
+        hasher.update(str(len(node_data)).encode('utf-8'))
+        hasher.update(str(len(edge_data)).encode('utf-8'))
+        return hasher.hexdigest()
+
+    def get_hashed_output_path(self, graph_hash):
+        """요청된 저장 경로를 바탕으로 해시 기반 파일 경로 생성"""
+        base_path = self.output_graph_path
+        if not base_path:
+            base_path = os.path.join(os.getcwd(), 'graph.npz')
+
+        base_dir = os.path.dirname(base_path)
+        base_name = os.path.basename(base_path) or 'graph.npz'
+        name, ext = os.path.splitext(base_name)
+        if not ext:
+            ext = '.npz'
+
+        hashed_filename = f'{name}_{graph_hash[:8]}{ext}'
+        return os.path.join(base_dir or '.', hashed_filename)
 
 
 def main(args=None):

@@ -3,9 +3,7 @@ Panels:
     Help Height: 78
     Name: Displays
     Property Tree Widget:
-      Expanded:
-        - /MarkerArray1
-        - /MarkerArray1/Topic1
+      Expanded: ~
       Splitter Ratio: 0.5
     Tree Height: 1153
   - Class: rviz_common/Selection
@@ -168,8 +166,8 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 10.500611305236816
-        Min Value: -3.992281913757324
+        Max Value: 0.15308921039104462
+        Min Value: -9.265253067016602
         Value: true
       Axis: X
       Channel Name: intensity
@@ -351,7 +349,8 @@ Visualization Manager:
       Enabled: true
       Name: Graph
       Namespaces:
-        {}
+        graph_edges: true
+        graph_nodes: true
       Topic:
         Depth: 5
         Durability Policy: Volatile

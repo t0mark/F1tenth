@@ -56,7 +56,26 @@ class GraphPlanner:
         self.node_theta: np.ndarray = self.nodes[:, 2]
         self.node_lane: np.ndarray = self.nodes[:, 3].astype(np.int64)
         self.node_long: np.ndarray = self.nodes[:, 4].astype(np.int64)
+
+        # 속도 정보 (있으면 사용, 없으면 기본값)
+        if self.nodes.shape[1] >= 7:
+            self.node_max_velocity: np.ndarray = self.nodes[:, 5]
+            self.node_curvature: np.ndarray = self.nodes[:, 6]
+            self.has_velocity_info = True
+        else:
+            self.node_max_velocity = np.ones(len(self.nodes)) * 5.0  # 기본 속도
+            self.node_curvature = np.zeros(len(self.nodes))
+            self.has_velocity_info = False
+
         self.adjacency: Dict[int, List[int]] = self._build_adjacency()
+
+        # 그래프 해시 정보 로드
+        self.graph_hash: Optional[str] = None
+        if 'graph_hash' in data:
+            hash_data = data['graph_hash']
+            if hash_data.size > 0:
+                # numpy 문자열 배열에서 첫 번째 요소 추출
+                self.graph_hash = str(hash_data.flatten()[0].decode('utf-8') if isinstance(hash_data.flatten()[0], bytes) else hash_data.flatten()[0])
 
         self.metadata = data.get('metadata')
         self.longitudinal_interval: float = 1.0
@@ -69,9 +88,12 @@ class GraphPlanner:
 
         self.collision_check_resolution = max(0.05, float(collision_check_resolution))
         mode = str(edge_cost_mode).lower()
-        self.edge_cost_mode = 'length' if mode not in ('unit', 'length') else mode
+        self.edge_cost_mode = 'length' if mode not in ('unit', 'length', 'time') else mode
         self.weight_center = float(heuristic_weight_center)
         self.weight_incourse = float(heuristic_weight_incourse)
+
+        # 속도 기반 비용 사용 여부
+        self.use_velocity_cost = (self.edge_cost_mode == 'time' and self.has_velocity_info)
 
         self.center_lane_sequence: List[int] = self._compute_center_lane_sequence()
         self.center_index_by_long: Dict[int, int] = self._build_center_index_lookup()
@@ -210,9 +232,21 @@ class GraphPlanner:
     def _edge_cost(self, from_idx: int, to_idx: int) -> float:
         if self.edge_cost_mode == 'unit':
             return 1.0
+
         start = self.positions[from_idx]
         end = self.positions[to_idx]
-        return float(np.linalg.norm(end - start))
+        distance = float(np.linalg.norm(end - start))
+
+        if self.edge_cost_mode == 'time':
+            # 시간 기반 비용: distance / avg_velocity
+            # 엣지의 평균 속도 사용
+            v_from = max(0.1, float(self.node_max_velocity[from_idx]))
+            v_to = max(0.1, float(self.node_max_velocity[to_idx]))
+            avg_velocity = (v_from + v_to) / 2.0
+            return distance / avg_velocity
+        else:
+            # 거리 기반 비용
+            return distance
 
     def _edge_collides(self, from_idx: int, to_idx: int) -> bool:
         if not self.dynamic_obstacles:
@@ -327,9 +361,12 @@ class LocalHybridAStar(Node):
                 heuristic_weight_incourse=self.heuristic_weight_incourse,
             )
             self.graph_planner.set_obstacles(self.dynamic_obstacles)
+            hash_info = f', 해시: {self.graph_planner.graph_hash[:8]}' if self.graph_planner.graph_hash else ''
+            velocity_info = f', 속도 정보 포함' if self.graph_planner.has_velocity_info else ''
+            cost_mode_info = f', 비용 모드: {self.graph_planner.edge_cost_mode}'
             self.get_logger().info(
                 f'그래프 로드 완료 (노드 {len(self.graph_planner.nodes)}개, '
-                f'간선 {len(self.graph_planner.edges)}개)'
+                f'간선 {len(self.graph_planner.edges)}개{hash_info}{velocity_info}{cost_mode_info})'
             )
         except Exception as exc:  # pylint: disable=broad-except
             self.get_logger().error(f'그래프 로드 실패: {exc}')

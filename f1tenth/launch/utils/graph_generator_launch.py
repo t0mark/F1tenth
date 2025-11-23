@@ -64,6 +64,19 @@ def launch_setup(context, *args, **kwargs):
     max_lat_dist = float(LaunchConfiguration('max_lateral_distance').perform(context))
     min_wall_clear = float(LaunchConfiguration('min_wall_clearance').perform(context))
 
+    # Adaptive sampling 파라미터
+    enable_adaptive = LaunchConfiguration('enable_adaptive_sampling').perform(context).lower() == 'true'
+    curv_thresh_high = float(LaunchConfiguration('curvature_threshold_high').perform(context))
+    curv_thresh_low = float(LaunchConfiguration('curvature_threshold_low').perform(context))
+    dense_factor = float(LaunchConfiguration('dense_sampling_factor').perform(context))
+    sparse_factor = float(LaunchConfiguration('sparse_sampling_factor').perform(context))
+
+    # Velocity-aware 파라미터
+    enable_velocity = LaunchConfiguration('enable_velocity_estimation').perform(context).lower() == 'true'
+    max_vel_straight = float(LaunchConfiguration('max_velocity_straight').perform(context))
+    max_vel_curve = float(LaunchConfiguration('max_velocity_curve').perform(context))
+    max_vel_lane_change = float(LaunchConfiguration('max_velocity_lane_change').perform(context))
+
     # 파일명만 제공된 경우 전체 경로로 변환
     if not os.path.isabs(global_config):
         global_config = os.path.join(pkg_share, 'config', 'planning', global_config)
@@ -135,6 +148,17 @@ def launch_setup(context, *args, **kwargs):
             'lateral_sampling_interval': lat_interval,
             'max_lateral_distance': max_lat_dist,
             'min_wall_clearance': min_wall_clear,
+            # Adaptive sampling
+            'enable_adaptive_sampling': enable_adaptive,
+            'curvature_threshold_high': curv_thresh_high,
+            'curvature_threshold_low': curv_thresh_low,
+            'dense_sampling_factor': dense_factor,
+            'sparse_sampling_factor': sparse_factor,
+            # Velocity-aware
+            'enable_velocity_estimation': enable_velocity,
+            'max_velocity_straight': max_vel_straight,
+            'max_velocity_curve': max_vel_curve,
+            'max_velocity_lane_change': max_vel_lane_change,
         }]
     )
 
@@ -180,6 +204,53 @@ def generate_launch_description():
             'min_wall_clearance',
             default_value='0.2',
             description='노드 생성 시 벽까지의 최소 거리 (m)'
+        ),
+        # Adaptive sampling 파라미터
+        DeclareLaunchArgument(
+            'enable_adaptive_sampling',
+            default_value='true',
+            description='곡률 기반 적응형 샘플링 활성화 (true/false)'
+        ),
+        DeclareLaunchArgument(
+            'curvature_threshold_high',
+            default_value='0.3',
+            description='높은 곡률 임계값 (1/m)'
+        ),
+        DeclareLaunchArgument(
+            'curvature_threshold_low',
+            default_value='0.1',
+            description='낮은 곡률 임계값 (1/m)'
+        ),
+        DeclareLaunchArgument(
+            'dense_sampling_factor',
+            default_value='0.5',
+            description='곡선 구간 샘플링 밀도 증가 계수'
+        ),
+        DeclareLaunchArgument(
+            'sparse_sampling_factor',
+            default_value='1.5',
+            description='직선 구간 샘플링 밀도 감소 계수'
+        ),
+        # Velocity-aware 파라미터
+        DeclareLaunchArgument(
+            'enable_velocity_estimation',
+            default_value='true',
+            description='속도 추정 활성화 (true/false)'
+        ),
+        DeclareLaunchArgument(
+            'max_velocity_straight',
+            default_value='8.0',
+            description='직선 구간 최대 속도 (m/s)'
+        ),
+        DeclareLaunchArgument(
+            'max_velocity_curve',
+            default_value='3.0',
+            description='곡선 구간 최대 속도 (m/s)'
+        ),
+        DeclareLaunchArgument(
+            'max_velocity_lane_change',
+            default_value='5.0',
+            description='차선 변경 시 최대 속도 (m/s)'
         ),
         # 노드 실행
         OpaqueFunction(function=launch_setup)
