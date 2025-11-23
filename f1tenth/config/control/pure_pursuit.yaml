@@ -16,7 +16,7 @@ controller:
 
     # Speed parameters
     v_min: 3.0
-    v_max: 5.0
+    v_max: 9.0
     max_lateral_accel: 14.715  # 1.5 * g (F1TENTH benchmark)
 
     # Lookahead parameters
