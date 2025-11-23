@@ -69,7 +69,7 @@ setup(
 
             # Planning - Tools
             'checkpoint_recorder_node = f1tenth.utils.checkpoint_recorder:main',
-            'map_graph_generator = f1tenth.utils.graph_generator:main',
+            'graph_generator_node = f1tenth.utils.graph_generator:main',
         ],
     },
 )

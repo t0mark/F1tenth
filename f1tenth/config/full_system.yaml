@@ -19,7 +19,7 @@ localization:
 # ============================================================
 planning:
   global_config: "planning/global_checkpoint.yaml"  # 글로벌 플래너 (Checkpoint, Centerline 등)
-  local_config: "planning/local_sampler.yaml"       # 로컬 플래너 (Sampler, Avoidance 등)
+  local_config: "planning/local_hybrid_astar.yaml"       # 로컬 플래너 (Sampler, Avoidance 등)
 
 # ============================================================
 # Control Config Files
