@@ -282,11 +282,11 @@ class GraphPlanner:
         return path
 
 
-class LocalHybridAStar(Node):
+class LocalAStarV2(Node):
     """장애물 기반 A* 로컬 플래너 ROS2 노드."""
 
     def __init__(self) -> None:
-        super().__init__('local_hybrid_astar_node')
+        super().__init__('local_astar_v2_node')
 
         # 파라미터 선언
         self.declare_parameter('odom_topic', '/odom')
@@ -485,7 +485,7 @@ class LocalHybridAStar(Node):
 
 def main(args=None) -> None:
     rclpy.init(args=args)
-    node = LocalHybridAStar()
+    node = LocalAStarV2()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

@@ -64,7 +64,8 @@ setup(
 
             # Planning - Local
             'local_avoidance_node = f1tenth.planning.local_avoidance:main',
-            'local_hybrid_astar_node = f1tenth.planning.local_hybrid_astar:main',
+            'local_astar_v1_node = f1tenth.planning.local_astar_v1:main',
+            'local_astar_v2_node = f1tenth.planning.local_astar_v2:main',
             'local_sampler_node = f1tenth.planning.local_sampler:main',
 
             # Planning - Tools

@@ -1,0 +1,33 @@
+# 로컬 A* 플래너 설정
+# 그래프(lane_idx/long_idx 포함)에서 짧은 구간 경로를 찾는다.
+
+local_planner:
+  ros__parameters:
+    node_executable: 'local_astar_v2_node'
+    node_name: 'local_astar_v2_node'
+
+    # 필수 토픽 / 파일
+    odom_topic: '/odom'
+    output_topic: '/local_path'
+    graph_topic: '/graph'
+    obstacle_topic: '/obstacle'
+    graph_file_path: '${WORKSPACE_ROOT}/src/f1tenth/data/graph.npz'
+
+    # 탐색 기본값 및 프레임
+    map_frame: 'map'
+    lookahead_distance: 12.0        # lane_idx=0 상에서 목표를 잡는 거리 (m)
+    update_rate: 1000.0             # 계획 주기 (Hz)
+
+    # 장애물 처리
+    obstacle_inflation_radius: 0.3  # LiDAR 점 <-> 엣지 충돌 여유 (m)
+    collision_check_resolution: 0.2 # 엣지 샘플 간격 (m)
+
+    # g(n) = step cost. edge_cost_mode: 'unit', 'length', 'time'
+    # - 'unit': 모든 엣지 비용 1 (노드 수 최소화)
+    # - 'length': 거리 기반 비용 (경로 길이 최소화)
+    # - 'time': 시간 기반 비용 (랩타임 최소화, 속도 정보 필요)
+    edge_cost_mode: 'time'
+
+    # 휴리스틱 가중치 (a < b 유지)
+    heuristic_weight_center: 0.4    # a : 글로벌 패스에서 벗어난 거리
+    heuristic_weight_incourse: 0.8  # b : 인코스 보너스
