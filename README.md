@@ -54,13 +54,17 @@ git clone https://github.com/t0mark/f1tenth.git src
 
 source /opt/ros/humble/setup.bash
 colcon build --symlink-install
-echo source ~/f1_ws/install/setup.bash >> ~/.bashrc
+echo "source ~/f1_ws/install/setup.bash" >> ~/.bashrc
+source ~/.bashrc
 
 # 하드웨어 사용 시
 mkdir -p ~/hw_ws
 cd ~/hw_ws
 git clone https://github.com/t0mark/f1tenth.git -b hardware src
 colcon build --symlink-install
+echo "source ~/hw_ws/install/setup.bash" >> ~/.bashrc
+source ~/.bashrc
+
 ## 순서대로 실행
 source ~/f1_ws/install/setup.bash
 source ~/hw_ws/install/setup.bash
